@@ -20,7 +20,7 @@ A manual audit of a single Google Ads account takes 4-6 hours of senior PPC time
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-Experimental-yellow)](https://github.com/google-gemini/gemini-cli)
 [![Goose](https://img.shields.io/badge/Goose-Experimental-yellow)](https://block.github.io/goose/)
 
-> **Last updated:** 2026-05-18 · **Version:** v1.7.0 · [CHANGELOG](CHANGELOG.md) · [Blog: full ad audit breakdown](https://agricidaniel.com/blog/claude-code-ad-agency)
+> **Last updated:** 2026-05-18 · **Version:** v1.7.1 · [CHANGELOG](CHANGELOG.md) · [Blog: full ad audit breakdown](https://agricidaniel.com/blog/claude-code-ad-agency)
 
 > **Two versions of this skill.**
 > - 🌐 **Public open-source** → [`AgriciDaniel/claude-ads`](https://github.com/AgriciDaniel/claude-ads): MIT, public releases, no membership. Use this if you want stable + downloadable.
@@ -584,7 +584,7 @@ The 12-month delivery cadence from v1.5 stable through Wave 2 (v1.7.x, current) 
 
 ## Project info
 
-- [CHANGELOG](CHANGELOG.md): release history with full v1.7.0 notes
+- [CHANGELOG](CHANGELOG.md): release history with full Wave 2 notes (v1.7.0 + v1.7.1)
 - [CONTRIBUTING](CONTRIBUTING.md): bug reports, feature requests, sub-skill templates, testing discipline
 - [CODE OF CONDUCT](CODE_OF_CONDUCT.md): Contributor Covenant
 - [SECURITY](SECURITY.md): vulnerability disclosure, outbound network destinations table, error sanitization
@@ -592,7 +592,7 @@ The 12-month delivery cadence from v1.5 stable through Wave 2 (v1.7.x, current) 
 
 ## Related projects
 
-- 🌐 **[claude-ads (public)](https://github.com/AgriciDaniel/claude-ads)**: the open-source version of this skill (MIT, latest public release `v1.5.1`). Use this if you're not in the Pro community.
+- 🌐 **[claude-ads (public)](https://github.com/AgriciDaniel/claude-ads)**: the open-source version of this skill (MIT, current public release `v1.7.1`). Use this if you're not in the Pro community.
 - [Claude SEO](https://github.com/AgriciDaniel/claude-seo): comprehensive SEO analysis skill for Claude Code
 
 ## Maintainer

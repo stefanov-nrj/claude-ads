@@ -89,3 +89,23 @@ research-prompt*.md
 
 # Playwright MCP session artifacts (browser console/page logs from interactive runs)
 .playwright-mcp/
+
+# In-progress branding & release-marketing WIP (lives in working tree, never shipped)
+presentations/
+branding/scripts/
+branding/*.html
+branding/*.png
+diagrams-preview.png
+
+# Diagram variant exploration (only the locked picks ship, not -A / -C alternates).
+# Locked picks: 01-architecture-B, 02-pipeline-A, 03-sub-skill-map-B,
+#               04-scoring-weights-B, 05-roadmap-A. Anything else is exploration.
+assets/banner-A.svg
+assets/banner-B.svg
+assets/banner-C.svg
+assets/diagrams/*-A.svg
+assets/diagrams/*-C.svg
+assets/diagrams/02-pipeline-B.svg
+assets/diagrams/05-roadmap-B.svg
+!assets/diagrams/02-pipeline-A.svg
+!assets/diagrams/05-roadmap-A.svg
