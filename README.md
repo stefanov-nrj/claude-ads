@@ -418,7 +418,7 @@ Runs entirely on your local machine via Claude Code. No ad account data is sent 
 | **Custom benchmarks** | Manual | Manual | Vendor-fixed | **Edit local SKILL.md** |
 | **Data leaves machine?** | No (your spreadsheet) | Yes (sent to agency) | Yes (uploaded to vendor) | **No, fully local** |
 | **Lock-in** | None | High | High (data exit cost) | **None — MIT, your files** |
-| **Andromeda / AI Max / AdAttributionKit awareness** | Depends on analyst | Depends on agency seniority | Lagging (typically 6-12 mo behind) | **Includes 2026 platform features** |
+| **Andromeda / AI Max / AdAttributionKit awareness** | Depends on analyst | Depends on agency seniority | Lagging (typically 6-12 mo behind) | **Andromeda (Oct 2025), AI Max (May 2025), AdAttributionKit + WWDC25 configurable windows, Consent Mode V2** |
 
 > Cost benchmarks: manual audit assumes a senior PPC consultant at typical agency billable rates; agency engagement based on common discovery/audit deliverable scopes; commercial-tool subscriptions reflect published mid-tier pricing across the PPC audit category. Your numbers may differ.
 
@@ -525,6 +525,12 @@ Currently supported: Google, Meta (Facebook/Instagram), YouTube, LinkedIn, TikTo
 <summary><b>How does it score financial KPIs like ROAS, CPA, ACOS, TACOS, LTV:CAC?</b></summary>
 
 Use `/ads math` for the financial calculator (CPA, ROAS, CPL, break-even analysis, impression-share opportunity sizing, budget forecasting, LTV:CAC ratio, MER). The full audit (`/ads audit`) automatically benchmarks your reported ROAS / CPA / CPL against industry-specific targets loaded from `ads/references/benchmarks.md`. For Amazon, `/ads amazon` scores ACOS and TACOS against category benchmarks and flags products where TACOS exceeds your contribution margin.
+</details>
+
+<details>
+<summary><b>What's the maintenance & support commitment?</b></summary>
+
+Single maintainer (see [Maintainer](#maintainer)). Bug reports and issues filed via GitHub get a response within 48 hours on the public repo; faster for Pro community members via the [Skool community](https://www.skool.com/ai-marketing-hub-pro). No SLA on feature requests — those go through the public roadmap. CI runs the full eval harness on every commit, so regressions are caught before they ship.
 </details>
 
 <details>
