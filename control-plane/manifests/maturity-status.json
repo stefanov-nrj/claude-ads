@@ -52,7 +52,11 @@
         "A fresh-context verifier confirms completion claims from artifacts."
       ],
       "satisfied": false,
-      "evidence": []
+      "evidence": [
+        "evals/v2-behavior-evals.json",
+        "evals/results/2026-07-11-codex-forward.json",
+        "tests/routing/test_forward_eval_summary.py"
+      ]
     },
     {
       "id": "release-ready",
@@ -76,6 +80,7 @@
     "The paid-advertising source and claim pack is not yet complete.",
     "All twelve portable CSV export-ingestion capabilities are fixture-verified, but the broader domain-integrated gate still lacks complete platform findings, report, and native-export mapping evidence.",
     "Skill guidance is implemented but has not reached fixture-verified status for every platform.",
-    "The full v2 evaluation and release matrix has not passed."
+    "The supplementary Codex forward evaluation passed 24 of 24 cases with no P0 failure, but the canonical Claude runtime and retained-v1 comparison have not run.",
+    "The full operating-system, Python 3.12, remote-CI, and release matrix has not passed."
   ]
 }
