@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "evaluated_at": "2026-07-11",
-  "current": "inventory-baselined",
+  "current": "domain-integrated",
   "levels": [
     {
       "id": "inventory-baselined",
@@ -24,10 +24,12 @@
         "All load-bearing platform, policy, API, regulation, specification, and benchmark claims have current dated sources.",
         "Claim coverage, confidence, contradictions, licenses, and refresh dates pass audit."
       ],
-      "satisfied": false,
+      "satisfied": true,
       "evidence": [
         "control-plane/manifests/source-ledger.json",
-        "control-plane/manifests/claim-ledger.json"
+        "control-plane/manifests/claim-ledger.json",
+        "tests/audit/test_source_grounding.py",
+        "tests/references/test_cross_platform_references.py"
       ]
     },
     {
@@ -35,13 +37,24 @@
       "ordinal": 3,
       "requirements": [
         "All twelve platform contracts have normalized ingestion, findings, reports, fixtures, and tests.",
-        "Capability status matches executable behavior and adapter evidence."
+        "Capability status matches executable behavior and adapter evidence.",
+        "Every catalog check has a typed runtime disposition; account-health scoring stays disabled until an approved source, severity, input, weight, and regression profile exists."
       ],
-      "satisfied": false,
+      "satisfied": true,
       "evidence": [
         "claude_ads_core/adapters/csv_export.py",
+        "claude_ads_core/adapters/native_export.py",
+        "claude_ads_core/adapters/mappings_v1.py",
+        "claude_ads_core/control_registry.py",
+        "control-plane/manifests/capability-manifest.json",
+        "control-plane/manifests/control-registry.json",
+        "control-plane/manifests/scoring-profiles.json",
         "tests/fixtures/exports/",
-        "tests/core/test_adapters.py"
+        "tests/fixtures/native_exports/",
+        "tests/core/test_adapters.py",
+        "tests/core/test_native_exports.py",
+        "tests/core/test_control_registry.py",
+        "tests/core/test_platform_report_contracts.py"
       ]
     },
     {
@@ -54,8 +67,11 @@
       "satisfied": false,
       "evidence": [
         "evals/v2-behavior-evals.json",
+        "evals/model-eval-contract.json",
+        "evals/model_eval_gate.py",
         "evals/results/2026-07-11-codex-forward.json",
-        "tests/routing/test_forward_eval_summary.py"
+        "tests/routing/test_forward_eval_summary.py",
+        "tests/routing/test_model_eval_gate.py"
       ]
     },
     {
@@ -77,10 +93,9 @@
     "Required remote CI is skipped, unavailable, or failing."
   ],
   "blockers": [
-    "The paid-advertising source and claim pack is not yet complete.",
-    "All twelve portable CSV export-ingestion capabilities are fixture-verified, but the broader domain-integrated gate still lacks complete platform findings, report, and native-export mapping evidence.",
-    "Skill guidance is implemented but has not reached fixture-verified status for every platform.",
-    "The supplementary Codex forward evaluation passed 24 of 24 cases with no P0 failure, but the canonical Claude runtime and retained-v1 comparison have not run.",
-    "The full operating-system, Python 3.12, remote-CI, and release matrix has not passed."
+    "All twelve account-health scoring profiles are deliberately disabled. The audit catalog is typed for unscored discovery, but per-control severity, source, input, category-weight, and regression decisions have not been approved and must not be inferred.",
+    "The supplementary Codex forward evaluation passed 24 of 24 cases with no P0 failure. The fail-closed canonical Claude and retained-v1 comparison harness is implemented, but neither required external Claude Code run artifact has been supplied.",
+    "Independent code, evidence, security, privacy, and licensing approvals bound to the final integration commit and tree are not yet present.",
+    "The current integration commit has not yet passed the complete remote-CI and release-evidence gate."
   ]
 }

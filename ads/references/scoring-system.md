@@ -98,6 +98,14 @@ Before operational use, bind the selected profile to the run manifest and verify
 that its category names match the applicable controls. Change profiles only through
 a versioned product decision and regression analysis.
 
+The executable state lives in
+`control-plane/manifests/control-registry.json` and
+`control-plane/manifests/scoring-profiles.json`. The current v1 profiles are
+explicitly disabled: catalog rows remain typed informational watchlists or
+source-refresh discovery items. A disabled profile yields no account health and
+zero approved evidence coverage. Do not copy the reference weights above into a
+run or assign severity in a prompt.
+
 ## Portfolio health
 
 Use platform spend from the same time window:

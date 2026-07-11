@@ -142,7 +142,16 @@ platform produces a partial bundle and prevents the label `complete audit`.
 The canonical result is versioned JSON. Use the deterministic scoring engine;
 never recompute scores in prompts or report templates.
 
+Validate non-audit workflow artifacts against their installed v1 contract:
+setup and brand profiles, media plans, creative briefs/copy decks, generation
+manifests, monitoring bundles, experiment setup/readout artifacts, and mutation
+plans. Structural validity does not establish source truth, platform eligibility,
+provider availability, owner approval, or permission to apply a change.
+
 - Score stable applicable health controls only.
+- Load controls and category weights from the versioned control registry. If a
+  platform profile is disabled, return no health score and zero approved evidence
+  coverage; never promote catalog or watchlist rows inside a prompt.
 - Keep health, evidence coverage, regulatory exposure, and opportunities separate.
 - `not_applicable` controls do not affect score or coverage.
 - `unknown` controls do not affect health but reduce evidence coverage.
@@ -228,8 +237,11 @@ never hardcode `~/.claude`. Load only what the request needs:
 - `references/compliance.md` and `compliance-requirements.md`: policy and regulation.
 - `references/mcp-integration.md`: integration and approval boundaries.
 - `references/automation-tier-classifier.md`: account automation maturity.
+- `references/status-contract.md`: deterministic `/ads status` and `/ads next` evidence and priority rules.
 - `references/prompt-patterns.md`: worked routing, worker, evidence, mutation, and
   partial-failure examples for subtle cases.
+- `claude_ads_core/schemas/v1/`: strict workflow and orchestration contracts;
+  load only the schema for the artifact being produced or checked.
 - Platform audit and creative-spec references only for active platforms.
 - Workflow sub-skills only for the selected command.
 

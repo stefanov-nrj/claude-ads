@@ -6,6 +6,10 @@
   "primary_runtime": "claude-code",
   "portable_standard": "agent-skills",
   "canonical_command": "/ads",
+  "runtime_commands": {
+    "claude_standalone_skill": "/ads",
+    "claude_plugin": "/claude-ads:ads"
+  },
   "canonical_machine_output": "versioned-json",
   "human_renderers": ["markdown", "html", "pdf"],
   "default_mutation_mode": "read-only",

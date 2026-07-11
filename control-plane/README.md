@@ -17,8 +17,14 @@ system text, account exports, credentials, or raw private corpus.
 - `RELEASE_REQUIREMENTS.md`: maturity, testing, security, packaging, and remote
   CI requirements.
 - `schemas/`: JSON Schema Draft 2020-12 contracts.
+- `schemas/independent-review-evidence.schema.json` and
+  `schemas/review-trust-bundle.schema.json`: externally signed release-review
+  contracts; repository templates cannot satisfy the gate.
 - `manifests/`: current product, evidence, capability, safety, orchestration,
   maturity, and ecosystem-review state.
+- `manifests/control-registry.json` and `manifests/scoring-profiles.json`: the
+  exhaustive typed audit catalog and fail-closed platform health state. A named
+  check is not scoreable unless its versioned profile is enabled.
 
 ## Doctrine
 
@@ -31,3 +37,25 @@ system text, account exports, credentials, or raw private corpus.
 Manifests are release inputs, not marketing copy. A planned capability must be
 marked `declared` or `disabled`; only verified behavior may be marked
 `fixture-verified` or `live-verified`.
+
+The dependency-free core also validates strict v1 workflow artifacts for setup,
+brand, planning, creative/copy, generation, monitoring, experiments, and mutation
+plans. These contracts establish structure only; they do not prove source truth,
+platform eligibility, provider availability, account authority, or approval.
+File-backed orchestration uses immutable run, task, result, and artifact-only gate
+packets. Reruns require an explicit `supersedes` chain.
+
+The current catalog is operational for discovery findings, not account-health
+grading. All twelve scoring profiles are disabled until per-control source
+support, severity decisions, typed inputs, weights, and regression evidence are
+approved together.
+
+Run `python scripts/release.py gate` with the exact canonical-model report,
+external signed review directory, reviewer public-key trust bundle, implementation
+principal list, and GitHub Actions run ID. The emitted assessment conforms to
+`schemas/release-gate-report.schema.json` and fails closed when any input is
+missing, stale, unsigned, mismatched, incomplete, or unsuccessful.
+
+Run `python -m claude_ads_core status --root . --as-of YYYY-MM-DD` for the
+repository-artifact status, or replace `status` with `next` for exactly one
+deterministically selected blocker. Both commands are offline and fail closed.

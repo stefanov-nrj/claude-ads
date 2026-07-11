@@ -199,7 +199,7 @@
       "confidence": "high",
       "license": "Google Developers content CC BY 4.0 and samples Apache-2.0 unless noted",
       "redistribution": "metadata-only",
-      "claim_ids": ["CLM-0012"]
+      "claim_ids": ["CLM-0012", "CLM-0201"]
     },
     {
       "id": "microsoft-uet-official",
@@ -719,6 +719,125 @@
       "redistribution": "metadata-only",
       "claim_ids": ["CLM-0116"],
       "notes": "Performance figures are vendor-supplied and not independently verified."
+    },
+    {
+      "id": "google-ads-campaign-fields-official",
+      "title": "Google Ads API campaign field metadata",
+      "locator": "https://developers.google.com/google-ads/api/fields/latest/campaign",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "Google Developers content CC BY 4.0 and samples Apache-2.0 unless noted",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0201"]
+    },
+    {
+      "id": "meta-insights-reporting-official",
+      "title": "Meta Marketing API Insights reporting",
+      "locator": "https://developers.facebook.com/docs/marketing-api/insights/",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "Meta Platform Terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0202"]
+    },
+    {
+      "id": "linkedin-ad-analytics-reporting-official",
+      "title": "LinkedIn Ads Reporting and Analytics",
+      "locator": "https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads-reporting/ads-reporting",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "LinkedIn API Terms and Microsoft documentation terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0203"]
+    },
+    {
+      "id": "tiktok-integrated-reporting-official",
+      "title": "TikTok API for Business integrated reporting",
+      "locator": "https://business-api.tiktok.com/portal/docs?id=1751087777884161",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "TikTok for Business developer terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0204"]
+    },
+    {
+      "id": "microsoft-ad-performance-report-official",
+      "title": "Microsoft Advertising AdPerformanceReportColumn value set",
+      "locator": "https://learn.microsoft.com/en-us/advertising/reporting-service/adperformancereportcolumn?view=bingads-13",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "version": "bingads-13",
+      "confidence": "high",
+      "license": "Microsoft documentation terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0205"]
+    },
+    {
+      "id": "apple-campaign-reporting-official",
+      "title": "Apple Ads campaign-level reports",
+      "locator": "https://developer.apple.com/documentation/apple_ads/get-campaign-level-reports",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "Apple Developer documentation terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0206"]
+    },
+    {
+      "id": "reddit-ads-reporting-v3-official",
+      "title": "Reddit Ads API v3 report endpoint",
+      "locator": "https://ads-api.reddit.com/docs/v3/api/get-a-report",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "version": "v3",
+      "confidence": "high",
+      "license": "Reddit Ads API documentation terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0207"]
+    },
+    {
+      "id": "pinterest-ads-reporting-official",
+      "title": "Pinterest Ads Reporting",
+      "locator": "https://developers.pinterest.com/docs/analytics-and-reports/ads-reporting/",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "Pinterest developer documentation terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0208"]
+    },
+    {
+      "id": "snap-ads-measurement-official",
+      "title": "Snap Marketing API measurement reporting",
+      "locator": "https://developers.snap.com/marketing-api/Ads-API/measurement",
+      "source_type": "api-doc",
+      "authority_tier": 1,
+      "retrieved_at": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "confidence": "high",
+      "license": "Snap developer documentation terms; citation only",
+      "redistribution": "metadata-only",
+      "claim_ids": ["CLM-0209"]
     }
   ]
 }

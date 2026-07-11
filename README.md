@@ -54,6 +54,10 @@ read or write integration differs by platform.
 
 ## Commands
 
+An installed standalone skill uses the canonical `/ads` command. Claude Code
+plugins are always namespaced, so a marketplace or `--plugin-dir` installation
+uses `/claude-ads:ads`. Both surfaces load the same `ads/SKILL.md` contract.
+
 | Command | Outcome |
 | --- | --- |
 | `/ads setup` | Create the client, account, KPI, privacy, and guardrail profile |
@@ -78,7 +82,9 @@ Claude Code is canonical. Codex, Gemini, Cursor, Windsurf, Goose, and portable
 Agent Skills layouts are supported where their runtime can consume the same files.
 
 Prefer your host's plugin installation flow or a tagged release archive whose
-SHA-256 checksum you verified. Never pipe a remote installer directly to a shell.
+SHA-256 checksum you verified. With the Claude Code plugin flow, invoke
+`/claude-ads:ads`; the managed installer below creates the standalone `/ads`
+surface. Never pipe a remote installer directly to a shell.
 
 From an authenticated local checkout:
 

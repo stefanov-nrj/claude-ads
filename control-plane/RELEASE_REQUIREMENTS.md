@@ -14,6 +14,10 @@ capability loses its test evidence, or required remote CI does not pass.
 - Every complete-audit claim reports module completeness and evidence coverage.
 - Health, evidence confidence, regulatory exposure, and opportunities remain
   separate outputs.
+- Every catalog ID has one typed registry disposition. Only an enabled versioned
+  profile may supply health controls and category weights; health controls require
+  verified load-bearing claims, non-zero reviewed severity, explicit inputs, and
+  stable status. Disabled profiles must fail closed without a health score.
 
 ## Evidence gates
 
@@ -50,6 +54,17 @@ capability loses its test evidence, or required remote CI does not pass.
 - Routing and safety regressions pass at 100 percent.
 - Model evaluations reach at least 90 percent overall with no P0 safety failure
   and no unintended regression against retained v1 behavior.
+- The canonical model gate consumes complete external Claude Code run evidence
+  for both the exact candidate commit and pinned retained-v1 subject. Candidate
+  and baseline use the same CLI and model snapshot, a fresh process per case,
+  no conversation reuse, no mutation authority, and an evaluator independent
+  of the run executor.
+- Local schema, suite, and assessor checks never substitute for either external
+  model run. Missing, stale, non-Claude, self-graded, hash-mismatched, partial,
+  or runtime-incomparable evidence fails closed. Keep raw responses private and
+  retain only the redacted deterministic gate report as ignored, external
+  release evidence. It must not alter the exact Git subject it verifies or enter
+  the product archive.
 - A fresh-context verifier confirms completion claims from artifacts and test
   output, not from the implementation conversation.
 
@@ -71,7 +86,31 @@ capability loses its test evidence, or required remote CI does not pass.
   does not substitute for unavailable, skipped, or billing-blocked remote CI.
 - The integration branch receives independent code, evidence, security,
   privacy, and licensing review.
+- Review evidence conforms to the independent-review schema, binds the exact
+  commit and tree, and verifies under externally provisioned Ed25519 public keys.
+  Pending templates and repository-local trust roots cannot satisfy this gate.
 - No critical blocker remains in the ecosystem disposition ledger.
 - Only after all gates pass may the reviewed branch merge and receive a v2 tag.
 - Repository visibility remains private; public release requires the separate
   gate in `PUBLISHING_POLICY.md`.
+
+## Independent-review evidence protocol
+
+The files in `control-plane/manifests/reviews/` are pending, unsigned templates,
+not approvals. Completed review evidence stays outside the checkout and release
+archive because findings and evidence locators may be internal.
+
+Independent reviewers bind their documents to the full commit and tree IDs and
+sign canonical UTF-8 JSON with Ed25519 after omitting only
+`authentication.signature_b64url` (sorted keys, no insignificant whitespace, no
+ASCII escaping). Supply public reviewer keys through
+`CLAUDE_ADS_REVIEW_TRUST_KEYS_JSON`, implementation reviewer IDs through
+`CLAUDE_ADS_IMPLEMENTATION_PRINCIPALS_JSON`, and the external evidence directory
+through `CLAUDE_ADS_REVIEW_EVIDENCE_DIR`. Private keys must never enter the
+checkout, verifier, logs, or artifacts.
+
+Run `python scripts/review_evidence.py --root .`. Missing external state,
+subject mismatch, stale or duplicate evidence, pending/rejected decisions,
+invalid or mis-scoped keys, self-review, open critical/high findings, and
+accepted-risk findings without a separate owner gate fail closed. The verifier's
+redacted digest report may feed release metadata; raw review documents may not.

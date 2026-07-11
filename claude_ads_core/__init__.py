@@ -1,8 +1,36 @@
 """Deterministic Claude Ads contracts and scoring engine."""
 
 from .contracts import ContractError, load_contract, validate_contract
+from .control_registry import (
+    ControlRegistry,
+    RegistryEntry,
+    RegistryError,
+    ScoringProfile,
+    load_control_registry,
+)
 from .adapters import Adapter, AdapterCapabilities, GenericCSVExportAdapter, MutationDisabledError
 from .models import AccountSnapshot, ControlDefinition, Finding, ReportBundle, RunManifest
+from .orchestration import (
+    OrchestrationError,
+    OrchestrationStore,
+    artifact_sha256,
+    canonical_json_bytes,
+    evaluate_artifact_gate,
+)
+from .workflow_models import (
+    BrandProfile,
+    CreativeBrief,
+    ExperimentArtifact,
+    GenerationManifest,
+    MediaPlan,
+    MonitoringBundle,
+    MutationPlan,
+    OrchestrationGate,
+    OrchestrationResult,
+    OrchestrationRun,
+    OrchestrationTask,
+    SetupProfile,
+)
 from .reporting import (
     PDFDependencyError,
     ReportRenderError,
@@ -14,6 +42,7 @@ from .reporting import (
     resolve_report_path,
     write_report_bundle,
 )
+from .product_status import ProductStatusError, evaluate_product_status
 from .scoring import (
     CATEGORY_WEIGHT_TOTAL,
     SEVERITY_WEIGHTS,
@@ -31,18 +60,38 @@ __all__ = [
     "Adapter",
     "AdapterCapabilities",
     "ContractError",
+    "ControlRegistry",
     "ControlDefinition",
     "Finding",
     "GenericCSVExportAdapter",
     "MutationDisabledError",
+    "MutationPlan",
+    "MonitoringBundle",
+    "MediaPlan",
+    "GenerationManifest",
+    "ExperimentArtifact",
+    "CreativeBrief",
+    "BrandProfile",
+    "SetupProfile",
+    "OrchestrationError",
+    "OrchestrationGate",
+    "OrchestrationResult",
+    "OrchestrationRun",
+    "OrchestrationStore",
+    "OrchestrationTask",
     "PDFDependencyError",
     "PortfolioResult",
+    "ProductStatusError",
     "ReportRenderError",
     "ReportBundle",
+    "RegistryEntry",
+    "RegistryError",
     "RunManifest",
     "ScoreResult",
     "ScoringError",
+    "ScoringProfile",
     "load_contract",
+    "load_control_registry",
     "atomic_write_report",
     "render_html",
     "render_markdown",
@@ -52,6 +101,10 @@ __all__ = [
     "score_account",
     "score_portfolio",
     "validate_contract",
+    "evaluate_product_status",
+    "artifact_sha256",
+    "canonical_json_bytes",
+    "evaluate_artifact_gate",
     "write_report_bundle",
 ]
 

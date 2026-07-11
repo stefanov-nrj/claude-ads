@@ -10,12 +10,18 @@ resolution. The dns-failure case uses a hostname that definitely won't resolve.
 
 from __future__ import annotations
 
+import base64
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import requests
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
 # Make scripts/ importable without requiring an installed package
@@ -23,8 +29,10 @@ SCRIPTS_DIR = Path(__file__).resolve().parent.parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from url_utils import (  # noqa: E402
+    EgressSandboxAttestation,
     guarded_request,
     install_playwright_ssrf_guard,
+    load_egress_sandbox_attestation,
     resolve_output_path,
     sanitize_error,
     sanitize_headers,
@@ -32,6 +40,84 @@ from url_utils import (  # noqa: E402
     validate_browser_url,
     validate_url,
 )
+
+
+def _b64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _attestation_document(now: datetime) -> dict:
+    return {
+        "schema_version": "1.0.0",
+        "attestation_id": "attestation:test-001",
+        "audience": "claude-ads-browser-egress",
+        "issuer_id": "security-reviewer:test",
+        "environment_id": "test-environment",
+        "issued_at": (now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+        "not_before": (now - timedelta(seconds=30)).isoformat().replace("+00:00", "Z"),
+        "expires_at": (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+        "enforcement_boundary": "container-network-policy",
+        "controls": {
+            "blocks_link_local": True,
+            "blocks_loopback": True,
+            "blocks_metadata": True,
+            "blocks_private": True,
+            "blocks_reserved": True,
+            "covers_ipv4": True,
+            "covers_ipv6": True,
+            "covers_redirects": True,
+            "covers_subresources": True,
+            "fail_closed": True,
+            "prevents_dns_rebinding": True,
+            "public_only_after_dns": True,
+        },
+        "evidence_refs": ["test-artifact:egress-policy-001"],
+        "authentication": {
+            "algorithm": "ed25519",
+            "key_id": "test-ed25519-key",
+            "signature_b64url": "",
+        },
+    }
+
+
+def _write_signed_attestation(
+    tmp_path: Path,
+    *,
+    now: datetime | None = None,
+    mutate_before_sign=None,
+) -> tuple[Path, str, datetime]:
+    current = now or datetime.now(timezone.utc)
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    document = _attestation_document(current)
+    if mutate_before_sign:
+        mutate_before_sign(document)
+    unsigned = json.loads(json.dumps(document))
+    unsigned["authentication"].pop("signature_b64url")
+    payload = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    document["authentication"]["signature_b64url"] = _b64url(private_key.sign(payload))
+    path = tmp_path / "egress-attestation.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path, _b64url(public_key), current
+
+
+def _load_test_attestation(tmp_path: Path) -> EgressSandboxAttestation:
+    path, public_key, current = _write_signed_attestation(tmp_path)
+    return load_egress_sandbox_attestation(
+        path,
+        public_key_b64url=public_key,
+        expected_key_id="test-ed25519-key",
+        expected_environment_id="test-environment",
+        now=current,
+    )
 
 
 # ─── SSRF blocklist ─────────────────────────────────────────────────────────
@@ -360,7 +446,7 @@ def test_output_path_is_contained_and_blocks_symlink_escape(tmp_path):
         resolve_output_path("linked/leak.txt", root=root)
 
 
-def test_playwright_guard_blocks_private_requests_before_dispatch(monkeypatch):
+def test_playwright_guard_blocks_private_requests_before_dispatch(monkeypatch, tmp_path):
     handlers = []
 
     class Context:
@@ -368,7 +454,10 @@ def test_playwright_guard_blocks_private_requests_before_dispatch(monkeypatch):
             assert pattern == "**/*"
             handlers.append(handler)
 
-    blocked = install_playwright_ssrf_guard(Context())
+    blocked = install_playwright_ssrf_guard(
+        Context(),
+        egress_attestation=_load_test_attestation(tmp_path),
+    )
 
     class Request:
         url = "http://169.254.169.254/latest/meta-data/"
@@ -421,10 +510,13 @@ def test_playwright_guard_fails_closed_without_egress_attestation(monkeypatch):
 
     assert route.aborted is True
     assert route.continued is False
-    assert "egress-sandbox attestation is required" in blocked[0]["error"]
+    assert "verified egress-sandbox attestation document is required" in blocked[0]["error"]
 
 
-def test_playwright_guard_allows_public_url_only_with_egress_attestation(monkeypatch):
+def test_playwright_guard_allows_public_url_only_with_verified_egress_attestation(
+    monkeypatch,
+    tmp_path,
+):
     monkeypatch.setattr(
         "url_utils.socket.getaddrinfo",
         lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
@@ -445,16 +537,99 @@ def test_playwright_guard_allows_public_url_only_with_egress_attestation(monkeyp
         def continue_(self):
             self.continued = True
 
-    blocked = install_playwright_ssrf_guard(
-        Context(),
-        egress_sandbox_attested=True,
-    )
+    attestation = _load_test_attestation(tmp_path)
+    blocked = install_playwright_ssrf_guard(Context(), egress_attestation=attestation)
     route = Route()
     handlers[0](route, SimpleNamespace(url="https://example.com/landing"))
 
     assert route.continued is True
     assert route.aborted is False
     assert blocked == []
+
+
+def test_boolean_cannot_self_assert_browser_egress(monkeypatch):
+    monkeypatch.setattr(
+        "url_utils.socket.getaddrinfo",
+        lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
+    with pytest.raises(ValueError, match="verified egress-sandbox attestation"):
+        validate_browser_url("https://example.com", egress_attestation=True)
+
+
+def test_load_egress_attestation_verifies_ed25519_and_audit_reference(tmp_path):
+    path, public_key, current = _write_signed_attestation(tmp_path)
+    attestation = load_egress_sandbox_attestation(
+        path,
+        public_key_b64url=public_key,
+        expected_key_id="test-ed25519-key",
+        expected_environment_id="test-environment",
+        now=current,
+    )
+
+    reference = attestation.audit_reference()
+    assert reference["attestation_id"] == "attestation:test-001"
+    assert reference["issuer_id"] == "security-reviewer:test"
+    assert reference["environment_id"] == "test-environment"
+    assert len(reference["document_sha256"]) == 64
+
+
+def test_load_egress_attestation_rejects_tampering_wrong_environment_and_expiry(tmp_path):
+    path, public_key, current = _write_signed_attestation(tmp_path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["controls"]["blocks_metadata"] = False
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="browser control must be true"):
+        load_egress_sandbox_attestation(
+            path,
+            public_key_b64url=public_key,
+            expected_key_id="test-ed25519-key",
+            expected_environment_id="test-environment",
+            now=current,
+        )
+
+    path, public_key, current = _write_signed_attestation(tmp_path)
+    with pytest.raises(ValueError, match="another environment"):
+        load_egress_sandbox_attestation(
+            path,
+            public_key_b64url=public_key,
+            expected_key_id="test-ed25519-key",
+            expected_environment_id="production-runner",
+            now=current,
+        )
+    with pytest.raises(ValueError, match="expired"):
+        load_egress_sandbox_attestation(
+            path,
+            public_key_b64url=public_key,
+            expected_key_id="test-ed25519-key",
+            expected_environment_id="test-environment",
+            now=current + timedelta(hours=2),
+        )
+
+
+def test_load_egress_attestation_rejects_signature_tampering_and_symlink(tmp_path):
+    path, public_key, current = _write_signed_attestation(tmp_path)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["evidence_refs"] = ["test-artifact:substituted"]
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ValueError, match="authentication failed"):
+        load_egress_sandbox_attestation(
+            path,
+            public_key_b64url=public_key,
+            expected_key_id="test-ed25519-key",
+            expected_environment_id="test-environment",
+            now=current,
+        )
+
+    link = tmp_path / "attestation-link.json"
+    link.symlink_to(path)
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        load_egress_sandbox_attestation(
+            link,
+            public_key_b64url=public_key,
+            expected_key_id="test-ed25519-key",
+            expected_environment_id="test-environment",
+            now=current,
+        )
 
 
 def test_analyze_landing_rejects_hostname_before_browser_launch(monkeypatch):
@@ -467,10 +642,10 @@ def test_analyze_landing_rejects_hostname_before_browser_launch(monkeypatch):
 
     result = analyze_landing_module.analyze_landing("https://example.com/landing")
 
-    assert "egress-sandbox attestation is required" in result["error"]
+    assert "verified egress-sandbox attestation document is required" in result["error"]
 
 
-def test_guarded_browser_context_disables_service_workers_and_downloads():
+def test_guarded_browser_context_disables_service_workers_and_downloads(tmp_path):
     from url_utils import create_guarded_browser_context
 
     class Context:
@@ -483,9 +658,40 @@ def test_guarded_browser_context_disables_service_workers_and_downloads():
             return Context()
 
     browser = Browser()
-    create_guarded_browser_context(browser, viewport={"width": 100, "height": 100})
+    create_guarded_browser_context(
+        browser,
+        viewport={"width": 100, "height": 100},
+        egress_attestation=_load_test_attestation(tmp_path),
+    )
     assert browser.kwargs["service_workers"] == "block"
     assert browser.kwargs["accept_downloads"] is False
+
+
+def test_screenshot_receipt_binds_artifact_and_attestation_without_url_path(
+    tmp_path,
+    monkeypatch,
+):
+    pytest.importorskip("playwright.sync_api")
+    from capture_screenshot import _write_capture_receipt
+
+    monkeypatch.setenv("CLAUDE_ADS_OUTPUT_ROOT", str(tmp_path))
+    screenshot = tmp_path / "landing.png"
+    screenshot.write_bytes(b"sanitized-png-fixture")
+    attestation = _load_test_attestation(tmp_path)
+    receipt_path = _write_capture_receipt(
+        screenshot,
+        "https://example.com/private/customer-42?utm_campaign=secret",
+        attestation,
+    )
+
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["operation"] == "browser-screenshot-capture"
+    assert receipt["privacy_class"] == "confidential"
+    assert receipt["target"]["origin"] == "https://example.com"
+    assert "customer-42" not in receipt_path.read_text(encoding="utf-8")
+    assert receipt["artifact"]["filename"] == "landing.png"
+    assert receipt["artifact"]["sha256"] == hashlib.sha256(screenshot.read_bytes()).hexdigest()
+    assert receipt["egress_attestation"]["attestation_id"] == "attestation:test-001"
 
 
 # ─── Redirect SSRF revalidation (v1.7.1 hardening) ──────────────────────────

@@ -7,12 +7,25 @@ them to the user.
 """
 
 import ipaddress
+import base64
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import hashlib
+import json
 import os
 import re
 import socket
+import stat
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+try:
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+except ImportError:  # pragma: no cover - attested browser calls fail closed below
+    InvalidSignature = ValueError  # type: ignore[assignment,misc]
+    Ed25519PublicKey = None  # type: ignore[assignment,misc]
 
 try:
     import requests
@@ -136,6 +149,293 @@ def sanitize_url(url: str) -> str:
 _MAX_URL_LENGTH = 8192
 _LOCAL_HOSTNAMES = {"localhost", "localhost.localdomain", "metadata", "metadata.google.internal"}
 
+_ATTESTATION_VERIFIED = object()
+_ATTESTATION_MAX_BYTES = 64 * 1024
+_ATTESTATION_MAX_LIFETIME_SECONDS = 24 * 60 * 60
+_ATTESTATION_CONTROL_KEYS = {
+    "blocks_link_local",
+    "blocks_loopback",
+    "blocks_metadata",
+    "blocks_private",
+    "blocks_reserved",
+    "covers_ipv4",
+    "covers_ipv6",
+    "covers_redirects",
+    "covers_subresources",
+    "fail_closed",
+    "prevents_dns_rebinding",
+    "public_only_after_dns",
+}
+
+
+@dataclass(frozen=True)
+class EgressSandboxAttestation:
+    """Verified, short-lived authority to dispatch Chromium network requests.
+
+    Instances returned by :func:`load_egress_sandbox_attestation` are bound to
+    one externally named execution environment and an authenticated document.
+    Constructing this dataclass directly does not create a valid authority.
+    """
+
+    attestation_id: str
+    issuer_id: str
+    key_id: str
+    environment_id: str
+    issued_at: datetime
+    expires_at: datetime
+    document_sha256: str
+    _verification_marker: object = field(repr=False, compare=False)
+
+    def audit_reference(self) -> dict[str, str]:
+        """Return non-secret metadata suitable for an operation receipt."""
+        _require_verified_egress_attestation(self)
+        return {
+            "attestation_id": self.attestation_id,
+            "issuer_id": self.issuer_id,
+            "key_id": self.key_id,
+            "environment_id": self.environment_id,
+            "issued_at": _format_utc(self.issued_at),
+            "expires_at": _format_utc(self.expires_at),
+            "document_sha256": self.document_sha256,
+        }
+
+
+def _format_utc(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _parse_utc(value: Any, field_name: str) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError(f"Egress attestation {field_name} must be an RFC 3339 timestamp.")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(
+            f"Egress attestation {field_name} must be an RFC 3339 timestamp."
+        ) from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"Egress attestation {field_name} must include a timezone.")
+    return parsed.astimezone(timezone.utc)
+
+
+def _decode_b64url(value: str, field_name: str) -> bytes:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"Egress attestation {field_name} must be base64url text.")
+    try:
+        padding = "=" * (-len(value) % 4)
+        decoded = base64.b64decode(value + padding, altchars=b"-_", validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"Egress attestation {field_name} is not valid base64url.") from exc
+    canonical = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii")
+    if canonical != value.rstrip("="):
+        raise ValueError(f"Egress attestation {field_name} is not canonical base64url.")
+    return decoded
+
+
+def _read_attestation_document(path: str | os.PathLike[str]) -> bytes:
+    candidate = Path(path).expanduser()
+    if candidate.is_symlink():
+        raise ValueError("Egress attestation document must not be a symlink.")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(candidate, flags)
+    except OSError as exc:
+        raise ValueError(f"Cannot open egress attestation document: {sanitize_error(exc)}") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("Egress attestation document must be a regular file.")
+        if metadata.st_size > _ATTESTATION_MAX_BYTES:
+            raise ValueError("Egress attestation document is too large.")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            data = stream.read(_ATTESTATION_MAX_BYTES + 1)
+        if len(data) > _ATTESTATION_MAX_BYTES:
+            raise ValueError("Egress attestation document is too large.")
+        return data
+    finally:
+        os.close(descriptor)
+
+
+def _canonical_attestation_payload(document: dict[str, Any]) -> bytes:
+    authenticated = json.loads(json.dumps(document))
+    authentication = authenticated.get("authentication")
+    if not isinstance(authentication, dict):
+        raise ValueError("Egress attestation authentication must be an object.")
+    authentication.pop("signature_b64url", None)
+    return json.dumps(
+        authenticated,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def load_egress_sandbox_attestation(
+    path: str | os.PathLike[str],
+    *,
+    public_key_b64url: str | None = None,
+    expected_key_id: str | None = None,
+    expected_environment_id: str | None = None,
+    now: datetime | None = None,
+) -> EgressSandboxAttestation:
+    """Load and authenticate a browser egress-sandbox attestation.
+
+    Trust material is deliberately external to the attestation document. By
+    default the Ed25519 public key, its accountable key identifier, and the
+    execution environment identifier come from
+    ``CLAUDE_ADS_EGRESS_ATTESTATION_PUBLIC_KEY_B64URL``,
+    ``CLAUDE_ADS_EGRESS_ATTESTATION_KEY_ID``, and
+    ``CLAUDE_ADS_EGRESS_ENVIRONMENT_ID``. A document cannot authorize itself by
+    embedding a different key.
+    """
+    raw = _read_attestation_document(path)
+    try:
+        document = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Egress attestation document must be valid UTF-8 JSON.") from exc
+    if not isinstance(document, dict):
+        raise ValueError("Egress attestation document must be a JSON object.")
+
+    required_top_level = {
+        "schema_version",
+        "attestation_id",
+        "audience",
+        "issuer_id",
+        "environment_id",
+        "issued_at",
+        "not_before",
+        "expires_at",
+        "enforcement_boundary",
+        "controls",
+        "evidence_refs",
+        "authentication",
+    }
+    if set(document) != required_top_level:
+        missing = sorted(required_top_level - set(document))
+        unexpected = sorted(set(document) - required_top_level)
+        detail = []
+        if missing:
+            detail.append(f"missing {', '.join(missing)}")
+        if unexpected:
+            detail.append(f"unexpected {', '.join(unexpected)}")
+        raise ValueError("Invalid egress attestation fields: " + "; ".join(detail))
+    if document["schema_version"] != "1.0.0":
+        raise ValueError("Unsupported egress attestation schema version.")
+    if document["audience"] != "claude-ads-browser-egress":
+        raise ValueError("Egress attestation has the wrong audience.")
+
+    for field_name in ("attestation_id", "issuer_id", "environment_id"):
+        value = document[field_name]
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{2,127}", value):
+            raise ValueError(f"Egress attestation {field_name} is invalid.")
+    if document["enforcement_boundary"] not in {
+        "container-network-policy",
+        "host-firewall",
+        "isolated-network-proxy",
+    }:
+        raise ValueError("Egress attestation enforcement_boundary is unsupported.")
+
+    controls = document["controls"]
+    if not isinstance(controls, dict) or set(controls) != _ATTESTATION_CONTROL_KEYS:
+        raise ValueError("Egress attestation must declare the complete browser control set.")
+    if any(value is not True for value in controls.values()):
+        raise ValueError("Every egress attestation browser control must be true.")
+    evidence_refs = document["evidence_refs"]
+    if (
+        not isinstance(evidence_refs, list)
+        or not evidence_refs
+        or len(evidence_refs) > 20
+        or any(not isinstance(item, str) or not item.strip() or len(item) > 512 for item in evidence_refs)
+    ):
+        raise ValueError("Egress attestation evidence_refs must contain 1-20 references.")
+
+    issued_at = _parse_utc(document["issued_at"], "issued_at")
+    not_before = _parse_utc(document["not_before"], "not_before")
+    expires_at = _parse_utc(document["expires_at"], "expires_at")
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    if not issued_at <= not_before < expires_at:
+        raise ValueError("Egress attestation validity timestamps are inconsistent.")
+    if (expires_at - issued_at).total_seconds() > _ATTESTATION_MAX_LIFETIME_SECONDS:
+        raise ValueError("Egress attestation validity exceeds 24 hours.")
+    if current < not_before:
+        raise ValueError("Egress attestation is not yet valid.")
+    if current >= expires_at:
+        raise ValueError("Egress attestation has expired.")
+
+    authentication = document["authentication"]
+    if not isinstance(authentication, dict) or set(authentication) != {
+        "algorithm",
+        "key_id",
+        "signature_b64url",
+    }:
+        raise ValueError("Egress attestation authentication fields are invalid.")
+    if authentication["algorithm"] != "ed25519":
+        raise ValueError("Unsupported egress attestation authentication algorithm.")
+
+    trusted_key_id = expected_key_id or os.environ.get("CLAUDE_ADS_EGRESS_ATTESTATION_KEY_ID")
+    trusted_environment = expected_environment_id or os.environ.get(
+        "CLAUDE_ADS_EGRESS_ENVIRONMENT_ID"
+    )
+    encoded_key = public_key_b64url or os.environ.get(
+        "CLAUDE_ADS_EGRESS_ATTESTATION_PUBLIC_KEY_B64URL"
+    )
+    if not trusted_key_id or not trusted_environment or not encoded_key:
+        raise ValueError(
+            "External egress attestation trust material is incomplete; public key, key ID, "
+            "and environment ID are required."
+        )
+    if authentication["key_id"] != trusted_key_id:
+        raise ValueError("Egress attestation key ID is not trusted.")
+    if document["environment_id"] != trusted_environment:
+        raise ValueError("Egress attestation is bound to another environment.")
+
+    if Ed25519PublicKey is None:
+        raise ValueError(
+            "The cryptography package is required to verify egress attestations."
+        )
+    public_key_bytes = _decode_b64url(encoded_key, "trust public key")
+    if len(public_key_bytes) != 32:
+        raise ValueError("Egress attestation Ed25519 public key must be 32 bytes.")
+    signature = _decode_b64url(authentication["signature_b64url"], "signature_b64url")
+    if len(signature) != 64:
+        raise ValueError("Egress attestation Ed25519 signature must be 64 bytes.")
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
+            signature,
+            _canonical_attestation_payload(document),
+        )
+    except (InvalidSignature, ValueError) as exc:
+        raise ValueError("Egress attestation authentication failed.") from exc
+
+    return EgressSandboxAttestation(
+        attestation_id=document["attestation_id"],
+        issuer_id=document["issuer_id"],
+        key_id=authentication["key_id"],
+        environment_id=document["environment_id"],
+        issued_at=issued_at,
+        expires_at=expires_at,
+        document_sha256=hashlib.sha256(raw).hexdigest(),
+        _verification_marker=_ATTESTATION_VERIFIED,
+    )
+
+
+def _require_verified_egress_attestation(
+    attestation: EgressSandboxAttestation | None,
+    *,
+    now: datetime | None = None,
+) -> EgressSandboxAttestation:
+    if (
+        not isinstance(attestation, EgressSandboxAttestation)
+        or attestation._verification_marker is not _ATTESTATION_VERIFIED
+    ):
+        raise ValueError(
+            "Browser request blocked: a verified egress-sandbox attestation document is required."
+        )
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    if current >= attestation.expires_at:
+        raise ValueError("Browser request blocked: the egress-sandbox attestation has expired.")
+    return attestation
+
 
 def _validate_and_resolve_url(url: str) -> tuple[str, Any, tuple[str, ...]]:
     """Validate a URL and return every public address from one DNS snapshot.
@@ -214,25 +514,25 @@ def validate_url(url: str) -> str:
     return validated
 
 
-def validate_browser_url(url: str, *, egress_sandbox_attested: bool = False) -> str:
+def validate_browser_url(
+    url: str,
+    *,
+    egress_attestation: EgressSandboxAttestation | None = None,
+) -> str:
     """Validate a URL at the strongest boundary Playwright can enforce.
 
     Playwright route interception sees a URL before Chromium performs its own
     DNS lookup, but it cannot pin the later socket to the address Python
     validated. Browser dispatch is therefore denied by default, including for
-    public IP literals. Callers may proceed only after explicitly attesting
-    that an independently configured OS/container egress boundary blocks
-    private, loopback, link-local, metadata, and other non-public destinations
-    after DNS resolution and across redirects. The attestation is a contract;
-    this module cannot inspect or establish that external sandbox.
+    public IP literals. Callers may proceed only with a short-lived document
+    authenticated by an externally provisioned trust key and bound to the
+    current execution environment. The document attests that an independent
+    OS/container boundary blocks non-public destinations after DNS resolution
+    and across redirects. This module authenticates and records that claim; it
+    cannot establish the external sandbox itself.
     """
+    _require_verified_egress_attestation(egress_attestation)
     validated, _, _ = _validate_and_resolve_url(url)
-    if not egress_sandbox_attested:
-        raise ValueError(
-            "Browser request blocked: Playwright cannot pin DNS at the socket "
-            "boundary. An explicit OS/container egress-sandbox attestation is "
-            "required; use the Requests-based fetcher otherwise."
-        )
     return validated
 
 
@@ -370,7 +670,7 @@ def guarded_request(session: Any, method: str, url: str, **kwargs: Any) -> Any:
 def install_playwright_ssrf_guard(
     context: Any,
     *,
-    egress_sandbox_attested: bool = False,
+    egress_attestation: EgressSandboxAttestation | None = None,
 ) -> list[dict[str, str]]:
     """Screen every Playwright request before dispatch.
 
@@ -386,7 +686,7 @@ def install_playwright_ssrf_guard(
         try:
             validate_browser_url(
                 outbound.url,
-                egress_sandbox_attested=egress_sandbox_attested,
+                egress_attestation=egress_attestation,
             )
         except (TypeError, ValueError) as exc:
             blocked.append({"url": sanitize_url(str(outbound.url)), "error": sanitize_error(exc)})
@@ -401,17 +701,18 @@ def install_playwright_ssrf_guard(
 def create_guarded_browser_context(browser: Any, **kwargs: Any) -> tuple[Any, list[dict[str, str]]]:
     """Create a guarded Playwright context.
 
-    ``egress_sandbox_attested`` is consumed here rather than passed to
-    Playwright. Its default is intentionally false, which makes every browser
-    request fail closed at the route boundary.
+    ``egress_attestation`` is consumed here rather than passed to Playwright.
+    Its default is intentionally absent, which makes every browser request
+    fail closed at the route boundary.
     """
-    egress_sandbox_attested = bool(kwargs.pop("egress_sandbox_attested", False))
+    egress_attestation = kwargs.pop("egress_attestation", None)
+    _require_verified_egress_attestation(egress_attestation)
     kwargs.setdefault("service_workers", "block")
     kwargs.setdefault("accept_downloads", False)
     context = browser.new_context(**kwargs)
     return context, install_playwright_ssrf_guard(
         context,
-        egress_sandbox_attested=egress_sandbox_attested,
+        egress_attestation=egress_attestation,
     )
 
 

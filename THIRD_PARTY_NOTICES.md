@@ -25,6 +25,7 @@ Dependencies are installed from their publishers and retain their own licenses:
 
 - Requests and urllib3: Apache-2.0.
 - Playwright for Python: Apache-2.0.
+- Cryptography: Apache-2.0 or BSD-3-Clause.
 - Pillow: HPND-style license.
 - ReportLab: BSD-style license.
 - WeasyPrint: BSD-style license.

@@ -15,14 +15,21 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from .workflow_contracts import (
+    WORKFLOW_CONTRACT_NAMES,
+    WorkflowContractError,
+    validate_workflow_contract,
+)
+
 SCHEMA_VERSION = "1.0.0"
-CONTRACT_NAMES = (
+CORE_CONTRACT_NAMES = (
     "account-snapshot",
     "run-manifest",
     "control-definition",
     "finding",
     "report-bundle",
 )
+CONTRACT_NAMES = CORE_CONTRACT_NAMES + WORKFLOW_CONTRACT_NAMES
 PLATFORMS = {
     "google",
     "meta",
@@ -270,6 +277,12 @@ _VALIDATORS: dict[str, Callable[[Mapping[str, Any]], None]] = {
 def validate_contract(name: str, payload: Any) -> None:
     """Validate *payload* against the supported semantic v1 contract."""
 
+    if name in WORKFLOW_CONTRACT_NAMES:
+        try:
+            validate_workflow_contract(name, payload)
+        except WorkflowContractError as exc:
+            raise ContractError(str(exc)) from exc
+        return
     if name not in _VALIDATORS:
         raise ContractError(f"unknown contract {name!r}; expected one of: {', '.join(CONTRACT_NAMES)}")
     _VALIDATORS[name](_require_object(payload, "$"))

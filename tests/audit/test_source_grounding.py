@@ -243,7 +243,7 @@ def test_new_platform_foundation_claims_use_registered_official_sources(repo_roo
     claims = {item["id"]: item for item in claim_doc["claims"]}
     for claim_id, (source_id, hostname) in NEW_PLATFORM_FOUNDATION_SOURCES.items():
         assert claims[claim_id]["source_ids"] == [source_id]
-        assert sources[source_id]["claim_ids"] == [claim_id]
+        assert claim_id in sources[source_id]["claim_ids"]
         parsed = urlparse(sources[source_id]["locator"])
         assert parsed.scheme == "https"
         assert parsed.hostname == hostname

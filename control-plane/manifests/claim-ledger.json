@@ -421,6 +421,114 @@
       "last_verified": "2026-07-11",
       "refresh_due": "2026-08-10",
       "owner": "cross-platform-reference-owner"
+    },
+    {
+      "id": "CLM-0201",
+      "statement": "Google Ads campaign reporting exposes the versioned field metadata used by the Google and YouTube native campaign projections; VIDEO routing remains a separate platform guard.",
+      "scope": "Exact fields and VIDEO routing implemented by google-ads-api-campaign-daily-v1 and youtube-google-ads-api-video-campaign-daily-v1",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["google-ads-campaign-fields-official", "youtube-google-ads-video-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0202",
+      "statement": "Meta Insights provides campaign-level date, account, campaign, and spend fields suitable for the narrow daily native projection; unflattened action arrays are deliberately not normalized.",
+      "scope": "meta-marketing-api-insights-campaign-daily-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["meta-insights-reporting-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0203",
+      "statement": "LinkedIn adAnalytics campaign-pivot reporting provides daily date range, campaign URN, local cost, and external website conversion fields used by the native projection.",
+      "scope": "linkedin-ad-analytics-campaign-daily-v1 with CAMPAIGN pivot",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["linkedin-ad-analytics-reporting-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0204",
+      "statement": "TikTok integrated AUCTION_AD reporting provides the daily advertiser, campaign, ad, spend, and selected conversion fields used by the native projection.",
+      "scope": "tiktok-integrated-report-ad-daily-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["tiktok-integrated-reporting-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0205",
+      "statement": "Microsoft Advertising v13 AdPerformanceReport documents the daily account, campaign, ad, conversion, spend, and currency columns used by the native projection.",
+      "scope": "microsoft-ad-performance-daily-csv-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["microsoft-ad-performance-report-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0206",
+      "statement": "Apple Ads campaign-level reporting documents the metadata, daily budget, local spend, currency, and total install fields used by the native projection.",
+      "scope": "apple-ads-api-v5-campaign-daily-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["apple-campaign-reporting-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0207",
+      "statement": "Reddit Ads API v3 reporting documents DATE, CAMPAIGN_ID, AD_ID, microcurrency SPEND, and key-conversion count semantics used by the native projection.",
+      "scope": "reddit-ads-api-v3-ad-daily-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["reddit-ads-reporting-v3-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0208",
+      "statement": "Pinterest campaign analytics reporting documents daily date, microcurrency spend, and total-conversion fields used by the context-bound native projection.",
+      "scope": "pinterest-campaign-analytics-daily-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["pinterest-ads-reporting-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
+    },
+    {
+      "id": "CLM-0209",
+      "statement": "Snap campaign DAY measurement reporting documents start/end time, entity ID, microcurrency spend, and purchase-conversion fields used by the native projection.",
+      "scope": "snap-campaign-stats-daily-v1 only",
+      "classification": "evidence-based",
+      "verdict": "verified",
+      "source_ids": ["snap-ads-measurement-official"],
+      "load_bearing": true,
+      "last_verified": "2026-07-11",
+      "refresh_due": "2026-08-10",
+      "owner": "native-export-owner"
     }
   ]
 }

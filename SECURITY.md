@@ -24,7 +24,9 @@ Only the latest version receives security updates.
   pins Requests to the validated numeric address while preserving Host/SNI/TLS
   verification, and re-enters the guard for every redirect. Playwright cannot pin
   Chromium's socket resolution, so browser dispatch is denied unless an external
-  OS/container egress sandbox is explicitly attested.
+  OS/container egress sandbox supplies a short-lived Ed25519-signed attestation
+  bound to the current environment. Screenshot capture writes a digest-bound
+  receipt naming the attestation, issuer, trust key, environment, and artifact.
 - Error messages are scrubbed via `sanitize_error()` before reaching stdout, JSON output, or audit reports — strips `key=`, `token=`, `secret=`, `password=`, and bare `Bearer <token>` substrings
 - GitHub Actions are pinned to full commit SHAs; Dependabot auto-merge is restricted to patch updates only
 - `pip-audit` runs on every CI build and fails on any reported vulnerability (no severity threshold — strictest policy)
@@ -45,3 +47,33 @@ The following endpoints may be contacted at runtime. All user-supplied URLs pass
 | PyPI (`pypi.org`, `files.pythonhosted.org`) | Python dependency install | `install.sh`, `install.ps1` | Hardcoded; trusted by `pip` |
 
 If you discover any other outbound destination not listed above, please report it via the disclosure channel above.
+
+## Browser egress attestations
+
+The Boolean `--egress-sandbox-attested` escape hatch is not supported. Browser
+execution accepts only a JSON document conforming to
+`control-plane/schemas/egress-sandbox-attestation.schema.json` and authenticated
+with Ed25519. The signature covers the canonical JSON object with
+`authentication.signature_b64url` omitted: UTF-8, lexicographically sorted keys,
+no insignificant whitespace, and no ASCII escaping. Attestations must:
+
+- name the `claude-ads-browser-egress` audience and the exact environment;
+- expire within 24 hours of issuance;
+- assert every required IPv4, IPv6, DNS-rebinding, redirect, subresource,
+  metadata, private-address, and fail-closed control;
+- include test or policy evidence references; and
+- be signed by a key whose public half, key ID, and environment ID are supplied
+  outside the document through `CLAUDE_ADS_EGRESS_ATTESTATION_PUBLIC_KEY_B64URL`,
+  `CLAUDE_ADS_EGRESS_ATTESTATION_KEY_ID`, and
+  `CLAUDE_ADS_EGRESS_ENVIRONMENT_ID`.
+
+The runtime receives only the Ed25519 public key, so it cannot manufacture an
+attestation. Missing dependencies, trust material, controls, evidence, signature,
+environment binding, or freshness fail closed before Chromium launches. The
+schema and signature authenticate the issuer's claim; operators must still
+configure and test the named network boundary independently.
+
+Screenshots and their receipts are confidential. They use same-directory atomic
+replacement, receive mode `0600` where POSIX permissions are available, omit the
+URL path and query from the receipt, and must not be committed, attached to public
+issues, or included in release packages.

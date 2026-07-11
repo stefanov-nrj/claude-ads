@@ -12,7 +12,8 @@ read-only by default.
 
 ## Supported product surface
 
-- Primary runtime: Claude Code through `/ads`.
+- Primary runtime: Claude Code through `/ads` for a standalone skill install or
+  `/claude-ads:ads` for the necessarily namespaced plugin install.
 - Portable surface: Agent Skills-compatible runtimes and a matching CLI where
   executable support exists.
 - Target platforms: Google, Meta, YouTube, LinkedIn, TikTok, Microsoft, Apple,
@@ -33,6 +34,9 @@ read-only by default.
 - Claude Ads does not infer missing account facts and present them as observed.
 - Claude Ads does not guarantee live read or write support for every platform.
   Availability is declared per capability and adapter.
+- Claude Ads does not produce platform health from an audit checklist alone.
+  Disabled scoring profiles yield no health score; watchlist findings remain
+  unscored until their evidence and severity contract is approved.
 - Claude Ads does not permanently delete campaigns or account objects in v2.
 - Claude Ads does not publish client data, raw private research, captured
   prompts, or credentials.

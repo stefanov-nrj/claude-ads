@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime, timezone
 import hashlib
+import importlib.util
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
@@ -98,6 +101,17 @@ ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 class ReleaseError(RuntimeError):
     """A release gate failed."""
+
+
+def _load_local_module(root: Path, relative: str, module_name: str):
+    path = root / relative
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ReleaseError(f"cannot load release verifier: {relative}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _git(root: Path, *args: str) -> bytes:
@@ -490,6 +504,629 @@ def verify_release(output_dir: Path) -> None:
         raise ReleaseError("SBOM is not a CycloneDX component inventory")
 
 
+def _json_object(path: Path, label: str) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ReleaseError(f"cannot read {label}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ReleaseError(f"{label} must be a JSON object")
+    return value
+
+
+def _check_grounding_and_capabilities(root: Path, as_of: date) -> dict[str, object]:
+    source_doc = _json_object(
+        root / "control-plane/manifests/source-ledger.json", "source ledger"
+    )
+    claim_doc = _json_object(
+        root / "control-plane/manifests/claim-ledger.json", "claim ledger"
+    )
+    capability_doc = _json_object(
+        root / "control-plane/manifests/capability-manifest.json", "capability manifest"
+    )
+    sources_raw = source_doc.get("sources")
+    claims_raw = claim_doc.get("claims")
+    platforms_raw = capability_doc.get("platforms")
+    if not isinstance(sources_raw, list) or not isinstance(claims_raw, list):
+        raise ReleaseError("source and claim ledgers require arrays")
+    if not isinstance(platforms_raw, list):
+        raise ReleaseError("capability manifest requires a platforms array")
+    sources = {
+        item.get("id"): item
+        for item in sources_raw
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    claims = {
+        item.get("id"): item
+        for item in claims_raw
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    if len(sources) != len(sources_raw) or len(claims) != len(claims_raw):
+        raise ReleaseError("source or claim ledger contains an invalid or duplicate ID")
+    load_bearing = 0
+    for claim_id, claim in claims.items():
+        source_ids = claim.get("source_ids")
+        if not isinstance(source_ids, list) or not source_ids:
+            raise ReleaseError(f"claim {claim_id} has no sources")
+        for source_id in source_ids:
+            source = sources.get(source_id)
+            if source is None or claim_id not in source.get("claim_ids", []):
+                raise ReleaseError(f"claim/source reciprocity failed: {claim_id} -> {source_id}")
+        if claim.get("load_bearing") is True:
+            load_bearing += 1
+            if claim.get("verdict") != "verified":
+                raise ReleaseError(f"load-bearing claim is not verified: {claim_id}")
+            try:
+                due = date.fromisoformat(str(claim["refresh_due"]))
+            except (KeyError, ValueError) as exc:
+                raise ReleaseError(f"load-bearing claim has invalid refresh date: {claim_id}") from exc
+            if due < as_of:
+                raise ReleaseError(f"load-bearing claim is stale: {claim_id}")
+    if load_bearing == 0:
+        raise ReleaseError("no load-bearing claims are registered")
+    for source_id, source in sources.items():
+        for claim_id in source.get("claim_ids", []):
+            if claim_id not in claims or source_id not in claims[claim_id].get("source_ids", []):
+                raise ReleaseError(f"source/claim reciprocity failed: {source_id} -> {claim_id}")
+        if not source.get("license") or source.get("redistribution") == "prohibited":
+            raise ReleaseError(f"source lacks releasable license metadata: {source_id}")
+
+    verified_capabilities = 0
+    disabled_capabilities = 0
+    platform_ids: set[str] = set()
+    for platform in platforms_raw:
+        if not isinstance(platform, dict) or not isinstance(platform.get("id"), str):
+            raise ReleaseError("capability platform is invalid")
+        platform_id = platform["id"]
+        if platform_id in platform_ids:
+            raise ReleaseError(f"duplicate capability platform: {platform_id}")
+        platform_ids.add(platform_id)
+        capabilities = platform.get("capabilities")
+        if not isinstance(capabilities, list) or not capabilities:
+            raise ReleaseError(f"platform has no capabilities: {platform_id}")
+        capability_ids: set[str] = set()
+        for capability in capabilities:
+            if not isinstance(capability, dict) or not isinstance(capability.get("id"), str):
+                raise ReleaseError(f"invalid capability for {platform_id}")
+            capability_id = capability["id"]
+            if capability_id in capability_ids:
+                raise ReleaseError(f"duplicate {platform_id} capability: {capability_id}")
+            capability_ids.add(capability_id)
+            status = capability.get("status")
+            implementation = capability.get("implementation_paths", [])
+            fixtures = capability.get("fixture_paths", [])
+            tests = capability.get("test_paths", [])
+            source_ids = capability.get("source_ids", [])
+            for relative in [*implementation, *fixtures, *tests]:
+                if not isinstance(relative, str) or not (root / relative).is_file():
+                    raise ReleaseError(
+                        f"{platform_id}.{capability_id} evidence path is missing: {relative!r}"
+                    )
+            for source_id in source_ids:
+                if source_id not in sources:
+                    raise ReleaseError(
+                        f"{platform_id}.{capability_id} references unknown source {source_id}"
+                    )
+            if status == "fixture-verified":
+                if not implementation or not fixtures or not tests or not source_ids:
+                    raise ReleaseError(
+                        f"fixture-verified capability lacks complete evidence: {platform_id}.{capability_id}"
+                    )
+                verified_capabilities += 1
+            elif status == "disabled":
+                if not capability.get("disabled_reason"):
+                    raise ReleaseError(
+                        f"disabled capability lacks reason: {platform_id}.{capability_id}"
+                    )
+                disabled_capabilities += 1
+    if len(platform_ids) != 12:
+        raise ReleaseError(f"capability manifest covers {len(platform_ids)} platforms, expected 12")
+    root_on_path = str(root)
+    inserted_path = root_on_path not in sys.path
+    if inserted_path:
+        sys.path.insert(0, root_on_path)
+    try:
+        try:
+            from claude_ads_core.control_registry import RegistryError, load_control_registry
+        except ImportError as exc:
+            raise ReleaseError(f"control registry loader is unavailable: {exc}") from exc
+        try:
+            registry = load_control_registry(root)
+        except RegistryError as exc:
+            raise ReleaseError(f"control registry integrity failed: {exc}") from exc
+    finally:
+        if inserted_path:
+            sys.path.remove(root_on_path)
+    enabled_profiles = sum(profile.status == "enabled" for profile in registry.profiles)
+    disabled_profiles = sum(profile.status == "disabled" for profile in registry.profiles)
+    grounded_controls = sum(bool(entry.source_claim_ids) for entry in registry.entries)
+    return {
+        "source_count": len(sources),
+        "claim_count": len(claims),
+        "load_bearing_claim_count": load_bearing,
+        "platform_count": len(platform_ids),
+        "fixture_verified_capability_count": verified_capabilities,
+        "disabled_capability_count": disabled_capabilities,
+        "registered_control_count": len(registry.entries),
+        "source_grounded_control_count": grounded_controls,
+        "enabled_scoring_profile_count": enabled_profiles,
+        "disabled_scoring_profile_count": disabled_profiles,
+    }
+
+
+def _schema_contract(
+    schema: dict[str, object], definition: str, value: object, label: str
+) -> dict[str, object]:
+    definitions = schema.get("$defs")
+    if not isinstance(definitions, dict) or not isinstance(definitions.get(definition), dict):
+        raise ReleaseError(f"repository review schema lacks {definition!r}")
+    contract = definitions[definition]
+    required = contract.get("required")
+    properties = contract.get("properties")
+    if not isinstance(required, list) or not isinstance(properties, dict):
+        raise ReleaseError(f"repository review schema definition is invalid: {definition}")
+    if not isinstance(value, dict):
+        raise ReleaseError(f"{label} must be an object")
+    fields = set(value)
+    missing = sorted(set(required) - fields)
+    extra = sorted(fields - set(properties))
+    if missing or extra:
+        raise ReleaseError(f"{label} violates schema fields; missing={missing}, extra={extra}")
+    return value
+
+
+def _check_repository_review_ledger(root: Path) -> dict[str, object]:
+    schema = _json_object(
+        root / "control-plane/schemas/repository-review-ledger.schema.json",
+        "repository review schema",
+    )
+    document = _json_object(
+        root / "control-plane/manifests/repository-review-ledger.json",
+        "repository review ledger",
+    )
+    if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+        raise ReleaseError("repository review schema must use JSON Schema Draft 2020-12")
+    if not str(schema.get("$id", "")).endswith("repository-review-ledger.v1.json"):
+        raise ReleaseError("repository review schema ID is not the v1 contract")
+    required = schema.get("required")
+    properties = schema.get("properties")
+    if not isinstance(required, list) or not isinstance(properties, dict):
+        raise ReleaseError("repository review schema has no top-level field contract")
+    if set(document) != set(required) or set(document) != set(properties):
+        raise ReleaseError("repository review ledger does not match its top-level schema")
+    if document.get("schema_version") != "1.0.0":
+        raise ReleaseError("repository review ledger schema version is unsupported")
+    if document.get("reviewed_at") != "2026-07-11":
+        raise ReleaseError("repository review ledger is not the required 2026-07-11 audit")
+    if document.get("clean_room_policy") != "concepts-only-no-code-or-prose":
+        raise ReleaseError("repository review ledger violates the clean-room policy")
+
+    definitions = schema.get("$defs")
+    disposition_contract = (
+        definitions.get("disposition") if isinstance(definitions, dict) else None
+    )
+    dispositions = (
+        set(disposition_contract.get("enum", []))
+        if isinstance(disposition_contract, dict)
+        else set()
+    )
+    if dispositions != {"adopt", "already-addressed", "defer", "reject"}:
+        raise ReleaseError("repository review disposition vocabulary is incomplete")
+    semantics = document.get("disposition_semantics")
+    if not isinstance(semantics, dict) or set(semantics) != dispositions:
+        raise ReleaseError("repository review disposition semantics are incomplete")
+
+    repositories_raw = document.get("repositories")
+    if not isinstance(repositories_raw, list) or len(repositories_raw) != 33:
+        raise ReleaseError("repository review ledger must contain all 33 pinned repositories")
+    repository_ids: set[str] = set()
+    repository_names: set[str] = set()
+    concept_ids: set[str] = set()
+    fork_ids: set[str] = set()
+    adopted_concepts = 0
+    unlicensed_repositories = 0
+    for index, raw_review in enumerate(repositories_raw):
+        review = _schema_contract(
+            schema, "repository_review", raw_review, f"repository review {index}"
+        )
+        review_id = review.get("id")
+        repository = review.get("repository")
+        if not isinstance(review_id, str) or review_id in repository_ids:
+            raise ReleaseError(f"invalid or duplicate repository review ID: {review_id!r}")
+        if not isinstance(repository, str) or repository in repository_names:
+            raise ReleaseError(f"invalid or duplicate reviewed repository: {repository!r}")
+        repository_ids.add(review_id)
+        repository_names.add(repository)
+        if review.get("source_url") != f"https://github.com/{repository}":
+            raise ReleaseError(f"repository source URL is not canonical: {review_id}")
+        if not re.fullmatch(r"[0-9a-f]{40}", str(review.get("reviewed_head_sha", ""))):
+            raise ReleaseError(f"repository head is not pinned: {review_id}")
+        if review.get("reviewed_at") != document["reviewed_at"]:
+            raise ReleaseError(f"repository review date is inconsistent: {review_id}")
+        if review.get("copy_policy") != document["clean_room_policy"]:
+            raise ReleaseError(f"repository copy policy is unsafe: {review_id}")
+        disposition = review.get("primary_disposition")
+        if disposition not in dispositions:
+            raise ReleaseError(f"repository disposition is missing: {review_id}")
+
+        relationship = review.get("relationship")
+        license_spdx = review.get("license_spdx")
+        license_use = review.get("license_use")
+        if license_spdx == "NOASSERTION":
+            unlicensed_repositories += 1
+            if license_use != "unverified-metadata-only" or disposition == "adopt":
+                raise ReleaseError(f"unlicensed repository is not fail-closed: {review_id}")
+        elif license_spdx in {"MIT", "Apache-2.0"}:
+            expected_use = (
+                "same-project-metadata-only"
+                if relationship == "fork"
+                else "compatible-metadata-only"
+            )
+            if license_use != expected_use:
+                raise ReleaseError(f"repository license use is inconsistent: {review_id}")
+        else:
+            raise ReleaseError(f"repository license is unsupported: {review_id}")
+
+        head_review = _schema_contract(
+            schema, "head_review", review.get("head_review"), f"head review {review_id}"
+        )
+        if not isinstance(head_review.get("surfaces"), list) or not head_review["surfaces"]:
+            raise ReleaseError(f"repository head review has no surfaces: {review_id}")
+        if relationship == "fork":
+            fork_ids.add(review_id)
+            status = head_review.get("compare_status")
+            if status not in {"ahead", "diverged", "no-common-ancestor"}:
+                raise ReleaseError(f"fork lacks compare evidence: {review_id}")
+            if status == "no-common-ancestor":
+                if head_review.get("method") != "github-rest-compare-plus-tree":
+                    raise ReleaseError(f"unrelated fork lacks tree evidence: {review_id}")
+            else:
+                required_compare = {
+                    "upstream_base_sha",
+                    "merge_base_sha",
+                    "ahead_by",
+                    "behind_by",
+                    "commit_count",
+                    "changed_files",
+                    "additions",
+                    "deletions",
+                }
+                if not required_compare <= set(head_review):
+                    raise ReleaseError(f"fork compare evidence is incomplete: {review_id}")
+        elif relationship != "external":
+            raise ReleaseError(f"repository relationship is invalid: {review_id}")
+
+        concepts = review.get("actionable_concepts")
+        if not isinstance(concepts, list) or not concepts:
+            raise ReleaseError(f"repository has no actionable concepts: {review_id}")
+        for raw_concept in concepts:
+            concept = _schema_contract(
+                schema, "actionable_concept", raw_concept, f"concept for {review_id}"
+            )
+            concept_id = concept.get("id")
+            if not isinstance(concept_id, str) or concept_id in concept_ids:
+                raise ReleaseError(f"invalid or duplicate repository concept: {concept_id!r}")
+            concept_ids.add(concept_id)
+            concept_disposition = concept.get("disposition")
+            if concept_disposition not in dispositions:
+                raise ReleaseError(f"concept disposition is missing: {concept_id}")
+            requirement_ids = concept.get("requirement_ids")
+            if not isinstance(requirement_ids, list) or not requirement_ids:
+                raise ReleaseError(f"concept lacks requirement traceability: {concept_id}")
+            if concept_disposition == "adopt":
+                adopted_concepts += 1
+                if license_spdx == "NOASSERTION":
+                    raise ReleaseError(f"unlicensed concept cannot be adopted: {concept_id}")
+
+    survey = _schema_contract(
+        schema, "fork_survey", document.get("fork_survey"), "fork survey"
+    )
+    if (
+        survey.get("upstream_repository") != "AgriciDaniel/claude-ads"
+        or survey.get("upstream_default_branch") != "main"
+        or survey.get("paginated_fork_count") != 1026
+        or survey.get("ancestor_or_equal_count") != 1009
+        or survey.get("non_ancestor_count") != 17
+        or survey.get("completeness") != "complete"
+    ):
+        raise ReleaseError("fork survey does not prove the required complete census")
+    if survey["ancestor_or_equal_count"] + survey["non_ancestor_count"] != survey["paginated_fork_count"]:
+        raise ReleaseError("fork survey arithmetic is inconsistent")
+    non_ancestor_ids = survey.get("non_ancestor_repository_ids")
+    if not isinstance(non_ancestor_ids, list) or len(non_ancestor_ids) != len(set(non_ancestor_ids)):
+        raise ReleaseError("fork survey divergent IDs are invalid or duplicated")
+    if set(non_ancestor_ids) != fork_ids or len(fork_ids) != 17:
+        raise ReleaseError("fork survey does not reconcile to all divergent reviews")
+
+    tracker_items_raw = document.get("tracker_items")
+    tracker_scopes_raw = document.get("tracker_scopes")
+    if not isinstance(tracker_items_raw, list) or not isinstance(tracker_scopes_raw, list):
+        raise ReleaseError("repository tracker evidence is missing")
+    tracker_items: dict[str, dict[str, object]] = {}
+    tracker_keys: set[tuple[object, object, object]] = set()
+    for index, raw_item in enumerate(tracker_items_raw):
+        item = _schema_contract(schema, "tracker_item", raw_item, f"tracker item {index}")
+        item_id = item.get("id")
+        key = (item.get("repository"), item.get("kind"), item.get("number"))
+        if not isinstance(item_id, str) or item_id in tracker_items or key in tracker_keys:
+            raise ReleaseError(f"invalid or duplicate tracker item: {item_id!r}")
+        tracker_items[item_id] = item
+        tracker_keys.add(key)
+        if item.get("repository") not in repository_names:
+            raise ReleaseError(f"tracker repository was not reviewed: {item_id}")
+        if item.get("disposition") not in dispositions:
+            raise ReleaseError(f"tracker disposition is missing: {item_id}")
+        links = item.get("linked_concept_ids")
+        if not isinstance(links, list) or not links or not set(links) <= concept_ids:
+            raise ReleaseError(f"tracker concept links are incomplete: {item_id}")
+        if item.get("merged") is True and (
+            item.get("kind") != "pull-request" or item.get("state") != "closed"
+        ):
+            raise ReleaseError(f"tracker merge state is inconsistent: {item_id}")
+
+    covered_tracker_ids: set[str] = set()
+    scoped_repositories: set[str] = set()
+    for index, raw_scope in enumerate(tracker_scopes_raw):
+        scope = _schema_contract(schema, "tracker_scope", raw_scope, f"tracker scope {index}")
+        repository = scope.get("repository")
+        if not isinstance(repository, str) or repository in scoped_repositories:
+            raise ReleaseError(f"invalid or duplicate tracker scope: {repository!r}")
+        scoped_repositories.add(repository)
+        if scope.get("state_filter") != "all" or scope.get("completeness") != "complete":
+            raise ReleaseError(f"tracker scope is not exhaustive: {repository}")
+        item_ids = scope.get("item_ids")
+        if not isinstance(item_ids, list) or len(item_ids) != len(set(item_ids)):
+            raise ReleaseError(f"tracker scope IDs are invalid: {repository}")
+        if covered_tracker_ids & set(item_ids):
+            raise ReleaseError(f"tracker item appears in multiple scopes: {repository}")
+        scoped_items = [tracker_items.get(item_id) for item_id in item_ids]
+        if any(item is None or item.get("repository") != repository for item in scoped_items):
+            raise ReleaseError(f"tracker scope does not resolve: {repository}")
+        issue_count = sum(item.get("kind") == "issue" for item in scoped_items if item)
+        pull_count = sum(item.get("kind") == "pull-request" for item in scoped_items if item)
+        if scope.get("issue_count") != issue_count or scope.get("pull_request_count") != pull_count:
+            raise ReleaseError(f"tracker scope arithmetic is inconsistent: {repository}")
+        covered_tracker_ids.update(item_ids)
+    if covered_tracker_ids != set(tracker_items) or len(tracker_items) != 14:
+        raise ReleaseError("tracker scopes do not cover the complete 14-item review")
+
+    blockers_raw = document.get("critical_blockers")
+    if not isinstance(blockers_raw, list):
+        raise ReleaseError("repository critical-blocker register is missing")
+    blocker_ids: set[str] = set()
+    open_blockers: list[str] = []
+    for index, raw_blocker in enumerate(blockers_raw):
+        blocker = _schema_contract(
+            schema, "critical_blocker", raw_blocker, f"critical blocker {index}"
+        )
+        blocker_id = blocker.get("id")
+        if not isinstance(blocker_id, str) or blocker_id in blocker_ids:
+            raise ReleaseError(f"invalid or duplicate repository blocker: {blocker_id!r}")
+        blocker_ids.add(blocker_id)
+        if blocker.get("severity") != "critical":
+            raise ReleaseError(f"repository blocker severity is invalid: {blocker_id}")
+        if blocker.get("status") == "open":
+            open_blockers.append(blocker_id)
+        elif blocker.get("status") == "resolved":
+            evidence_paths = blocker.get("evidence_paths")
+            if not isinstance(evidence_paths, list) or not evidence_paths:
+                raise ReleaseError(f"resolved repository blocker lacks evidence: {blocker_id}")
+            for relative in evidence_paths:
+                if (
+                    not isinstance(relative, str)
+                    or validate_portable_path(relative)
+                    or not (root / relative).is_file()
+                ):
+                    raise ReleaseError(
+                        f"repository blocker evidence path is missing: {blocker_id}: {relative!r}"
+                    )
+        else:
+            raise ReleaseError(f"repository blocker status is invalid: {blocker_id}")
+    if open_blockers:
+        raise ReleaseError(f"critical repository review blockers remain open: {open_blockers}")
+
+    return {
+        "repository_count": len(repositories_raw),
+        "fork_count": len(fork_ids),
+        "paginated_fork_count": survey["paginated_fork_count"],
+        "external_repository_count": len(repositories_raw) - len(fork_ids),
+        "concept_count": len(concept_ids),
+        "adopted_concept_count": adopted_concepts,
+        "unlicensed_repository_count": unlicensed_repositories,
+        "tracker_item_count": len(tracker_items),
+        "critical_blocker_count": len(blocker_ids),
+    }
+
+
+def _check_ecosystem(root: Path) -> dict[str, object]:
+    document = _json_object(
+        root / "control-plane/manifests/ecosystem-dispositions.json",
+        "ecosystem disposition ledger",
+    )
+    entries = document.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ReleaseError("ecosystem disposition ledger is empty")
+    ids: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+            raise ReleaseError("ecosystem disposition entry is invalid")
+        if entry["id"] in ids:
+            raise ReleaseError(f"duplicate ecosystem disposition: {entry['id']}")
+        ids.add(entry["id"])
+        if entry.get("license_review") == "pending" or entry.get("decision") in {None, "pending"}:
+            raise ReleaseError(f"ecosystem entry remains pending: {entry['id']}")
+    repository_evidence = _check_repository_review_ledger(root)
+    return {
+        "issue_and_pull_request_count": len(entries),
+        **repository_evidence,
+    }
+
+
+def _gh_json(root: Path, endpoint: str) -> dict[str, object]:
+    result = subprocess.run(
+        ["gh", "api", endpoint],
+        cwd=root,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode:
+        raise ReleaseError(f"GitHub evidence query failed for {endpoint}")
+    try:
+        value = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ReleaseError(f"GitHub evidence is not JSON for {endpoint}") from exc
+    if not isinstance(value, dict):
+        raise ReleaseError(f"GitHub evidence must be an object for {endpoint}")
+    return value
+
+
+def verify_github_run(root: Path, run_id: str, commit_sha: str) -> dict[str, object]:
+    if not re.fullmatch(r"[1-9][0-9]*", run_id):
+        raise ReleaseError("GitHub Actions run ID must be a positive integer")
+    repository = "AI-Marketing-Hub/claude-ads"
+    repo = _gh_json(root, f"repos/{repository}")
+    if repo.get("visibility") != "private" or repo.get("private") is not True:
+        raise ReleaseError("canonical repository is not private")
+    run = _gh_json(root, f"repos/{repository}/actions/runs/{run_id}")
+    if (
+        run.get("head_sha") != commit_sha
+        or run.get("status") != "completed"
+        or run.get("conclusion") != "success"
+        or run.get("path") != ".github/workflows/ci.yml"
+        or run.get("head_branch") != "v2"
+    ):
+        raise ReleaseError("GitHub Actions run does not prove the exact private v2 subject")
+    jobs_doc = _gh_json(root, f"repos/{repository}/actions/runs/{run_id}/jobs?per_page=100")
+    jobs = jobs_doc.get("jobs")
+    if not isinstance(jobs, list):
+        raise ReleaseError("GitHub Actions jobs evidence is missing")
+    required = {
+        "Repository audit",
+        "Core tests (Python 3.11)",
+        "Core tests (Python 3.12)",
+        "Full test suite",
+        "Installer tests (ubuntu-latest)",
+        "Installer tests (macos-latest)",
+        "Installer tests (windows-latest)",
+        "Reproducible package smoke test",
+    }
+    conclusions = {
+        job.get("name"): job.get("conclusion")
+        for job in jobs
+        if isinstance(job, dict) and isinstance(job.get("name"), str)
+    }
+    missing = sorted(required - conclusions.keys())
+    failed = sorted(name for name in required if conclusions.get(name) != "success")
+    if missing or failed:
+        raise ReleaseError(
+            f"required GitHub jobs are incomplete; missing={missing}, non_success={failed}"
+        )
+    return {
+        "repository": repository,
+        "run_id": int(run_id),
+        "url": run.get("html_url"),
+        "head_sha": commit_sha,
+        "jobs": sorted(required),
+        "repository_visibility": "private",
+    }
+
+
+def evaluate_release_gate(
+    root: Path,
+    *,
+    model_report: Path | None,
+    review_evidence_dir: Path | None,
+    github_run_id: str | None,
+    trust_bundle_json: str | None = None,
+    implementation_principals_json: str | None = None,
+) -> dict[str, object]:
+    """Evaluate every locally and externally verifiable release gate."""
+    commit_sha = _git(root, "rev-parse", "HEAD").decode("ascii").strip()
+    tree_sha = _git(root, "rev-parse", "HEAD^{tree}").decode("ascii").strip()
+    checks: list[dict[str, object]] = []
+
+    def check(check_id: str, operation) -> None:
+        try:
+            evidence = operation()
+            checks.append({"id": check_id, "status": "pass", "evidence": evidence})
+        except Exception as exc:  # each independent gate must remain visible
+            checks.append({"id": check_id, "status": "fail", "error": str(exc)})
+
+    check(
+        "repository-audit",
+        lambda: (
+            {"tracked_file_count": len(tracked_files(root))}
+            if not audit_repository(root)
+            else (_ for _ in ()).throw(
+                ReleaseError("repository audit failed: " + "; ".join(audit_repository(root)))
+            )
+        ),
+    )
+    check(
+        "clean-subject",
+        lambda: (
+            {"commit_sha": commit_sha, "tree_sha": tree_sha}
+            if not _git(root, "status", "--porcelain").strip()
+            else (_ for _ in ()).throw(ReleaseError("release subject worktree is not clean"))
+        ),
+    )
+    check(
+        "source-capability-integrity",
+        lambda: _check_grounding_and_capabilities(root, datetime.now(timezone.utc).date()),
+    )
+    check("ecosystem-dispositions", lambda: _check_ecosystem(root))
+
+    def model_evidence() -> dict[str, object]:
+        if model_report is None or not model_report.is_file():
+            raise ReleaseError("canonical Claude model-gate report is required")
+        module = _load_local_module(root, "evals/model_eval_gate.py", "claude_ads_model_gate")
+        return module.verify_release_report(
+            model_report,
+            root / "evals/model-eval-contract.json",
+            root,
+            commit_sha,
+            tree_sha,
+        )
+
+    check("canonical-model-evaluation", model_evidence)
+
+    def independent_reviews() -> dict[str, object]:
+        if review_evidence_dir is None:
+            raise ReleaseError("external signed review evidence directory is required")
+        module = _load_local_module(
+            root, "scripts/review_evidence.py", "claude_ads_review_gate"
+        )
+        return module.verify_independent_reviews(
+            root,
+            review_evidence_dir,
+            trust_bundle_json=trust_bundle_json,
+            implementation_principals_json=implementation_principals_json,
+            commit_sha=commit_sha,
+            tree_sha=tree_sha,
+        )
+
+    check("independent-reviews", independent_reviews)
+    check(
+        "remote-ci",
+        lambda: verify_github_run(root, github_run_id or "", commit_sha)
+        if github_run_id
+        else (_ for _ in ()).throw(ReleaseError("GitHub Actions run ID is required")),
+    )
+    satisfied = all(item["status"] == "pass" for item in checks)
+    return {
+        "schema_version": "1.0.0",
+        "evidence_class": "release-gate-assessment",
+        "evaluated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+            "+00:00", "Z"
+        ),
+        "subject": {"commit_sha": commit_sha, "tree_sha": tree_sha},
+        "checks": checks,
+        "release_gate_satisfied": satisfied,
+    }
+
+
 def _root(value: str | None) -> Path:
     if value:
         return Path(value).resolve()
@@ -505,6 +1142,21 @@ def main(argv: list[str] | None = None) -> int:
     package_parser.add_argument("--output-dir", default="dist")
     verify_parser = subparsers.add_parser("verify", help="verify built artifacts")
     verify_parser.add_argument("--output-dir", default="dist")
+    gate_parser = subparsers.add_parser(
+        "gate", help="evaluate the exact candidate against every release gate"
+    )
+    gate_parser.add_argument(
+        "--model-report", default="evals/results/canonical-model-gate.json"
+    )
+    gate_parser.add_argument(
+        "--review-evidence-dir",
+        default=os.environ.get("CLAUDE_ADS_REVIEW_EVIDENCE_DIR"),
+    )
+    gate_parser.add_argument("--github-run-id", default=os.environ.get("GITHUB_RUN_ID"))
+    gate_parser.add_argument(
+        "--output",
+        help="optional repository-relative path for the redacted gate assessment",
+    )
     args = parser.parse_args(argv)
     root = _root(args.root)
 
@@ -519,9 +1171,38 @@ def main(argv: list[str] | None = None) -> int:
             verify_release((root / args.output_dir).resolve())
             for kind, path in artifacts.items():
                 print(f"{kind}: {path}")
-        else:
+        elif args.command == "verify":
             verify_release((root / args.output_dir).resolve())
             print("release artifacts verified")
+        else:
+            report = evaluate_release_gate(
+                root,
+                model_report=(root / args.model_report).resolve() if args.model_report else None,
+                review_evidence_dir=(
+                    Path(args.review_evidence_dir).expanduser().resolve()
+                    if args.review_evidence_dir
+                    else None
+                ),
+                github_run_id=args.github_run_id,
+            )
+            rendered = _json_bytes(report).decode("utf-8")
+            if args.output:
+                issues = validate_portable_path(args.output)
+                if issues:
+                    raise ReleaseError("unsafe gate output path: " + "; ".join(issues))
+                output = (root / args.output).resolve()
+                try:
+                    output.relative_to(root)
+                except ValueError as exc:
+                    raise ReleaseError("gate output escapes repository root") from exc
+                parent = output.parent
+                parent.mkdir(parents=True, exist_ok=True)
+                if any(path.is_symlink() for path in (parent, output) if path.exists()):
+                    raise ReleaseError("gate output path must not be a symlink")
+                output.write_text(rendered, encoding="utf-8", newline="\n")
+            print(rendered, end="")
+            if not report["release_gate_satisfied"]:
+                return 1
     except (OSError, KeyError, TypeError, ValueError, ReleaseError, zipfile.BadZipFile) as exc:
         print(f"release error: {exc}", file=sys.stderr)
         return 1

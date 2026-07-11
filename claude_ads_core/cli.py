@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import json
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from . import __version__
 from .adapters import AdapterError, GenericCSVExportAdapter
 from .contracts import CONTRACT_NAMES, ContractError, load_contract, validate_contract
 from .reporting import ReportRenderError, write_report_bundle
+from .product_status import ProductStatusError, evaluate_product_status
 from .scoring import ScoringError, score_account, score_portfolio
 
 
@@ -43,8 +45,16 @@ def build_parser() -> argparse.ArgumentParser:
     portfolio = commands.add_parser("portfolio", help="aggregate account scores")
     portfolio.add_argument("path", help="JSON array of account score records")
 
-    status = commands.add_parser("status", help="show a report bundle's deterministic status")
-    status.add_argument("path")
+    status = commands.add_parser("status", help="show repository status, or a report bundle when path is supplied")
+    status.add_argument("path", nargs="?")
+    status.add_argument("--root", default=".")
+    status.add_argument("--as-of")
+    status.add_argument("--release-gate")
+
+    next_command = commands.add_parser("next", help="show exactly one repository-artifact blocker")
+    next_command.add_argument("--root", default=".")
+    next_command.add_argument("--as-of", required=True)
+    next_command.add_argument("--release-gate")
 
     render = commands.add_parser(
         "render",
@@ -82,17 +92,46 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ScoringError("portfolio input must be an array")
             _emit(score_portfolio(accounts).to_dict())
         elif args.command == "status":
-            bundle = _read_json(args.path)
-            validate_contract("report-bundle", bundle)
-            scoring = bundle["scoring"]
-            manifest = bundle["run_manifest"]
+            if args.path:
+                bundle = _read_json(args.path)
+                validate_contract("report-bundle", bundle)
+                scoring = bundle["scoring"]
+                manifest = bundle["run_manifest"]
+                _emit(
+                    {
+                        "run_id": manifest["run_id"],
+                        "completeness": manifest["completeness"],
+                        "health_score": scoring["health_score"],
+                        "evidence_coverage": scoring["evidence_coverage"],
+                        "status": scoring["status"],
+                    }
+                )
+            else:
+                if not args.as_of:
+                    raise ProductStatusError("repository status requires --as-of YYYY-MM-DD")
+                try:
+                    as_of = date.fromisoformat(args.as_of)
+                except ValueError as exc:
+                    raise ProductStatusError("--as-of must be an ISO 8601 date") from exc
+                _emit(
+                    evaluate_product_status(
+                        args.root, as_of=as_of, release_gate_path=args.release_gate
+                    )
+                )
+        elif args.command == "next":
+            try:
+                as_of = date.fromisoformat(args.as_of)
+            except ValueError as exc:
+                raise ProductStatusError("--as-of must be an ISO 8601 date") from exc
+            status_payload = evaluate_product_status(
+                args.root, as_of=as_of, release_gate_path=args.release_gate
+            )
             _emit(
                 {
-                    "run_id": manifest["run_id"],
-                    "completeness": manifest["completeness"],
-                    "health_score": scoring["health_score"],
-                    "evidence_coverage": scoring["evidence_coverage"],
-                    "status": scoring["status"],
+                    "schema_version": status_payload["schema_version"],
+                    "as_of": status_payload["as_of"],
+                    "selection_policy": status_payload["selection_policy"],
+                    "next_blocker": status_payload["next_blocker"],
                 }
             )
         elif args.command in {"render", "report"}:
@@ -110,7 +149,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         elif args.command == "ingest-export":
             _emit(GenericCSVExportAdapter(args.platform).read_snapshot(args.path))
-    except (AdapterError, ContractError, ReportRenderError, ScoringError) as exc:
+    except (AdapterError, ContractError, ProductStatusError, ReportRenderError, ScoringError) as exc:
         print(json.dumps({"status": "invalid", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 2
     return 0

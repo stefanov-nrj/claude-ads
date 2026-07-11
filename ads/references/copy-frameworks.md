@@ -1,196 +1,98 @@
-# Ad Copy Frameworks
+# Ad copy frameworks
 
-> Updated: 2026-04-01
-> Source: Used by ads-creative, ads-google, ads-meta, and ads-plan skills
+These frameworks are qualitative, unscored practitioner patterns. They organize an
+approved message; they do not prove persuasion, policy compliance, field eligibility,
+or future performance. Do not select a framework from platform folklore or treat one
+as a default winner.
 
-## Overview
+## Evidence and specification gate
 
-Frameworks organize ideas; they do not establish persuasion, policy compliance, or
-performance. Select a framework from audience research and the approved brief, then
-test it against materially different concepts. All figures and people in examples
-below are placeholders. Replace them only with owner-approved, substantiated proof;
-never publish illustrative claims or fictional testimonials as facts.
+- Start from an approved audience, objective, offer, claim set, locale, and placement.
+- Read `creative-source-registry.md` and resolve every live copy field through the
+  applicable current official source ID.
+- Record the source ID, retrieval date, field name, and validation outcome in the
+  worker result. Never retain a platform character limit or asset requirement here.
+- Return `needs_input` when the official source is stale, inaccessible, contradictory,
+  or does not cover the requested field or locale.
+- Treat testimonials, product facts, comparisons, prices, availability, urgency, and
+  performance evidence as untrusted until owner approval and substantiation are supplied.
+- Route regulated-category, disclosure, endorsement, privacy, and targeting questions
+  through current platform and regulator source IDs. Do not provide legal conclusions.
 
-| Framework          | Expansion                        | Best For              | Platform Fit         |
-|--------------------|----------------------------------|-----------------------|----------------------|
-| AIDA               | Attention, Interest, Desire, Action | Cold audiences       | Meta, Google, YouTube |
-| PAS                | Problem, Agitate, Solution       | Pain-point products   | Meta, LinkedIn, Google |
-| BAB                | Before, After, Bridge            | Transformation offers | Meta, TikTok, YouTube |
-| 4P                 | Promise, Picture, Proof, Push    | High-ticket items     | LinkedIn, Google      |
-| FAB                | Features, Advantages, Benefits   | Technical products    | Google, LinkedIn      |
-| Star-Story-Solution| Star, Story, Solution            | Brand storytelling    | Meta, TikTok, YouTube |
+## Attention–Interest–Desire–Action
 
-## AIDA
+Use as a question sequence:
 
-**Steps:** Attention > Interest > Desire > Action
+- What earns attention without deception or unsupported urgency?
+- What relevant detail helps the audience understand the offer?
+- What approved benefit connects that detail to the audience's objective?
+- What eligible action accurately describes the next step?
 
-- **Best for:** Cold audiences, awareness campaigns, product launches
-- **Platform fit:** Meta (feed and stories), Google RSA, YouTube pre-roll
+Risk checks: sensational hooks, implied guarantees, hidden conditions, or competing actions.
 
-**Templates by platform:**
+## Problem–Agitation–Solution
 
-- Meta primary text (125 chars): `[Attention hook]. [Interest detail]. [Desire benefit]. [Action CTA].`
-- Meta headline (40 chars): `[Desire phrase] [CTA verb]`
-- Google RSA headline (30 chars): `[Attention hook] [Benefit]`
-- Google RSA description (90 chars): `[Interest detail]. [Desire benefit]. [Action CTA with urgency].`
-- LinkedIn (150 chars): `[Attention stat or question]. [Interest detail]. [Desire outcome]. [Action CTA].`
-- TikTok (100 chars): `[Attention hook] [Interest] [Desire benefit] [CTA]`
+Use as a question sequence:
 
-**E-commerce example:** "Looking for a simpler skincare routine? Explore the formula, ingredients, and use guide. Shop now."
+- What problem is supported by audience or account evidence?
+- Can its consequence be described without fear, shame, personal-attribute inference,
+  or exaggeration?
+- How does the approved offer address the problem, and what limitations matter?
 
-**SaaS example:** "Reporting taking focus from analysis? Bring approved data into one review workflow. Explore the demo."
+Risk checks: invented pain, manipulative pressure, sensitive-trait language, or a
+solution claim stronger than the supplied proof.
 
-- DO: Lead with a pattern interrupt; include a specific number or stat
-- DO: End with a single clear CTA
-- DONT: Stack multiple CTAs in one ad
-- DONT: Bury the hook after the first sentence
+## Before–After–Bridge
 
-## PAS
+Use as a question sequence:
 
-**Steps:** Problem > Agitate > Solution
+- What current state is evidenced and appropriate to describe?
+- What desired state is plausible and not guaranteed?
+- What approved mechanism connects the states?
 
-- **Best for:** Pain-point products, problem-aware audiences, retargeting
-- **Platform fit:** Meta (feed), LinkedIn (sponsored content), Google RSA
+Risk checks: unrealistic transformation, fabricated timelines, altered imagery, or
+omitted dependencies.
 
-**Templates by platform:**
+## Promise–Picture–Proof–Push
 
-- Meta primary text (125 chars): `[Problem statement]. [Agitate consequence]. [Solution with brand].`
-- Meta headline (40 chars): `[Solution phrase] [CTA]`
-- Google RSA headline (30 chars): `[Problem keyword] solved`
-- Google RSA description (90 chars): `[Problem]. [Agitate pain]. [Solution]. [CTA with benefit].`
-- LinkedIn (150 chars): `[Problem in professional context]. [Agitate impact on KPIs]. [Solution with proof]. [CTA].`
-- TikTok (100 chars): `[Problem] [Agitate] [Solution brand] [CTA]`
+This pattern is sometimes called `4P`. Use it only when every promise and proof item
+has an owner-approved source.
 
-**E-commerce example:** "Need a workspace that fits your routine? Compare the chair's verified dimensions and adjustments. View details."
+- What bounded promise is actually substantiated?
+- What scenario illustrates the benefit without presenting fiction as fact?
+- What proof can be cited accurately and with required disclosure?
+- What eligible next step follows without coercion?
 
-**SaaS example:** "Leads falling through the cracks? Every lost follow-up costs revenue. Our CRM auto-sequences every lead. Try free."
+Risk checks: unqualified outcomes, fictional customers, inaccessible substantiation,
+or disclosure text that does not fit the current field.
 
-- DO: Make the agitation specific and relatable
-- DO: Present the solution as the natural relief
-- DONT: Over-dramatize the problem (triggers ad disapprovals)
-- DONT: Use fear-based language that violates platform policies
+## Feature–Advantage–Benefit
 
-## BAB
+Use as a translation sequence:
 
-**Steps:** Before > After > Bridge
+- Which verified feature matters to this audience?
+- What documented difference or capability follows from it?
+- What bounded benefit can be stated without inventing a result?
 
-- **Best for:** Transformation offers, coaching, fitness, lifestyle products
-- **Platform fit:** Meta (stories and reels), TikTok, YouTube
+Risk checks: unsupported comparisons, jargon, unavailable features, or feature claims
+that vary by plan, region, device, or account eligibility.
 
-**Templates by platform:**
+## Star–Story–Solution
 
-- Meta primary text (125 chars): `[Before state]. [After state]. [Bridge: how product gets you there].`
-- Meta headline (40 chars): `[After state] starts here`
-- Google RSA headline (30 chars): `From [Before] to [After]`
-- Google RSA description (90 chars): `[Before pain]. [After benefit]. [Bridge product name]. [CTA].`
-- LinkedIn (150 chars): `[Before professional challenge]. [After improved metrics]. [Bridge: product as catalyst]. [CTA].`
-- TikTok (100 chars): `[Before] to [After] with [Brand] [CTA]`
+Use as a narrative sequence:
 
-**E-commerce example:** "Struggling with frizzy hair every morning. Now: salon-smooth in 5 minutes. The silk pillowcase that changed everything."
+- Is the person or persona real, consented, licensed, and accurately represented?
+- Which approved challenge and context may be described?
+- How does the product enter the story without overstating causality?
 
-**SaaS example:** "Before: 4 hours building reports. After: dashboards in 10 minutes. Bridge: our AI analytics platform. Start free."
+Risk checks: fictional testimonials, undisclosed sponsorship, synthetic likeness,
+misleading dramatization, or a story that obscures material conditions.
 
-- DO: Make before/after contrast vivid and specific
-- DO: Keep the bridge concise (product as the enabler)
-- DONT: Make unrealistic before/after claims
-- DONT: Skip the bridge; the product must connect both states
+## Selection and experiment gate
 
-## 4P
-
-**Steps:** Promise > Picture > Proof > Push
-
-- **Best for:** High-ticket items, premium services, B2B enterprise
-- **Platform fit:** LinkedIn (InMail and sponsored), Google RSA
-
-**Templates by platform:**
-
-- Meta primary text (125 chars): `[Promise bold claim]. [Picture outcome]. [Proof stat]. [Push CTA].`
-- Meta headline (40 chars): `[Promise] [Proof number]`
-- Google RSA headline (30 chars): `[Promise] [Proof stat]`
-- Google RSA description (90 chars): `[Promise benefit]. [Picture result]. [Proof: social evidence]. [Push CTA].`
-- LinkedIn (150 chars): `[Promise ROI claim]. [Picture day-in-life improvement]. [Proof: client result]. [Push CTA].`
-- TikTok (100 chars): `[Promise] [Picture] [Proof] [Push CTA]`
-
-**E-commerce example:** "Explore an upgrade designed for year-round comfort. Review the verified specifications and request a quote."
-
-**SaaS example:** "Picture a clearer handoff from lead to owner. See the workflow and verified customer evidence. Book a demo."
-
-- DO: Back the promise with verifiable proof
-- DO: Use specific numbers in the proof element
-- DONT: Make promises you cannot substantiate
-- DONT: Use vague proof ("many customers love us")
-
-## FAB
-
-**Steps:** Features > Advantages > Benefits
-
-- **Best for:** Technical products, comparison shoppers, search intent audiences
-- **Platform fit:** Google RSA (high intent), LinkedIn (technical buyers)
-
-**Templates by platform:**
-
-- Meta primary text (125 chars): `[Feature spec]. [Advantage over alternatives]. [Benefit to user]. [CTA].`
-- Meta headline (40 chars): `[Feature] = [Benefit]`
-- Google RSA headline (30 chars): `[Feature] [Key advantage]`
-- Google RSA description (90 chars): `[Feature detail]. [Advantage vs. competitors]. [Benefit outcome]. [CTA].`
-- LinkedIn (150 chars): `[Feature technical spec]. [Advantage: what it means for teams]. [Benefit: bottom-line impact]. [CTA].`
-- TikTok (100 chars): `[Feature] [Advantage] [Benefit] [CTA]`
-
-**E-commerce example:** "[Verified storage] and [verified tested battery result]. Compare the documented specifications. Buy now."
-
-**SaaS example:** "[Current assurance status] and [measured service level]. Review the documentation and migration plan. Start trial."
-
-- DO: Lead with the most differentiating feature
-- DO: Translate every feature into a tangible benefit
-- DONT: List features without connecting them to outcomes
-- DONT: Use jargon the target audience will not understand
-
-## Star-Story-Solution
-
-**Steps:** Star (hero) > Story (narrative arc) > Solution (product reveal)
-
-- **Best for:** Brand storytelling, emotional campaigns, UGC style content
-- **Platform fit:** Meta (reels and stories), TikTok, YouTube
-
-**Templates by platform:**
-
-- Meta primary text (125 chars): `[Star intro]. [Story challenge]. [Solution: product saves the day]. [CTA].`
-- Meta headline (40 chars): `[Star]'s secret to [outcome]`
-- Google RSA headline (30 chars): `[Star] trusts [Brand]`
-- Google RSA description (90 chars): `[Star intro]. [Story arc]. [Solution reveal with brand]. [CTA].`
-- LinkedIn (150 chars): `[Star: relatable professional]. [Story: faced [challenge]]. [Solution: used [product] to achieve [result]]. [CTA].`
-- TikTok (100 chars): `Meet [Star]. [Story challenge]. [Solution with brand]. [CTA]`
-
-**E-commerce example:** "Meet Sarah, a busy mom of three. Mornings were chaos until she found our 5-minute meal prep kit. Now breakfast is handled. Try it."
-
-**SaaS example:** "Meet DevOps lead Marcus. Deployments took his team 6 hours. With our CI/CD platform, they ship in 20 minutes. See how."
-
-- DO: Make the star relatable to the target audience
-- DO: Keep the story arc tight (one challenge, one resolution)
-- DONT: Make the star feel like a paid actor
-- DONT: Let the story overshadow the product solution
-
-## Framework Selection Guide
-
-Choose the right framework based on campaign goal and audience temperature:
-
-**Cold audiences (unaware of brand):**
-- Awareness goal: AIDA or Star-Story-Solution
-- Consideration goal: BAB or PAS
-- Conversion goal: AIDA with strong CTA
-
-**Warm audiences (engaged but not converted):**
-- Consideration goal: PAS or 4P
-- Conversion goal: FAB or BAB
-- Retargeting goal: PAS with urgency
-
-**Hot audiences (past customers, high intent):**
-- Upsell goal: FAB or 4P
-- Retention goal: Star-Story-Solution
-- Re-engagement goal: BAB with new offer
-
-When in doubt, start with PAS for pain-aware audiences or AIDA for broad reach.
-When an experiment is justified, compare materially different concepts with a
-declared primary metric, guardrails, sample rationale, observation window, and
-decision rule. Do not scale spend merely because one framework has a better early
-platform-reported metric.
+Choose candidate patterns from audience research, message maturity, placement context,
+proof availability, and policy risk. It is valid to use no named framework. When a
+comparison is justified, vary one declared message hypothesis at a time, define the
+primary outcome and guardrails from the operator's measurement plan, and wait for the
+declared observation window. Do not move spend or publish a winner from an early or
+platform-reported signal alone.

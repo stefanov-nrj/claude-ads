@@ -21,8 +21,11 @@ ReleaseError = release.ReleaseError
 audit_repository = release.audit_repository
 build_release = release.build_release
 build_sbom = release.build_sbom
+evaluate_release_gate = release.evaluate_release_gate
 validate_portable_path = release.validate_portable_path
+verify_github_run = release.verify_github_run
 verify_release = release.verify_release
+check_grounding_and_capabilities = release._check_grounding_and_capabilities
 
 
 def _git(root: Path, *args: str) -> None:
@@ -170,3 +173,93 @@ def test_sbom_uses_actual_manifests(tmp_path: Path) -> None:
         if property_["name"] == "claude-ads:manifest"
     }
     assert request_sources == {"requirements.txt", "requirements-dev.txt"}
+
+
+def test_claude_command_contract_distinguishes_plugin_namespace() -> None:
+    root = RELEASE_SCRIPT.parents[1]
+    product = json.loads(
+        (root / "control-plane/manifests/product-manifest.json").read_text(encoding="utf-8")
+    )
+    assert product["canonical_command"] == "/ads"
+    assert product["runtime_commands"] == {
+        "claude_standalone_skill": "/ads",
+        "claude_plugin": "/claude-ads:ads",
+    }
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    boundaries = (root / "control-plane/PRODUCT_BOUNDARIES.md").read_text(encoding="utf-8")
+    for text in (readme, boundaries):
+        assert "/ads" in text
+        assert "/claude-ads:ads" in text
+
+
+def test_release_grounding_gate_validates_control_registry_and_profiles() -> None:
+    root = RELEASE_SCRIPT.parents[1]
+    result = check_grounding_and_capabilities(root, release.date(2026, 7, 11))
+    assert result["registered_control_count"] == 412
+    assert result["source_grounded_control_count"] > 0
+    assert result["enabled_scoring_profile_count"] == 0
+    assert result["disabled_scoring_profile_count"] == 12
+
+
+def test_release_gate_fails_closed_without_external_model_review_and_ci_evidence() -> None:
+    root = RELEASE_SCRIPT.parents[1]
+    report = evaluate_release_gate(
+        root,
+        model_report=None,
+        review_evidence_dir=None,
+        github_run_id=None,
+    )
+    checks = {item["id"]: item for item in report["checks"]}
+    assert report["evidence_class"] == "release-gate-assessment"
+    assert report["release_gate_satisfied"] is False
+    assert checks["canonical-model-evaluation"]["status"] == "fail"
+    assert checks["independent-reviews"]["status"] == "fail"
+    assert checks["remote-ci"]["status"] == "fail"
+
+
+def test_remote_ci_verifier_requires_exact_private_subject_and_all_jobs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _repository(tmp_path)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    required_jobs = [
+        "Repository audit",
+        "Core tests (Python 3.11)",
+        "Core tests (Python 3.12)",
+        "Full test suite",
+        "Installer tests (ubuntu-latest)",
+        "Installer tests (macos-latest)",
+        "Installer tests (windows-latest)",
+        "Reproducible package smoke test",
+    ]
+
+    def evidence(_root: Path, endpoint: str) -> dict:
+        if endpoint == "repos/AI-Marketing-Hub/claude-ads":
+            return {"visibility": "private", "private": True}
+        if endpoint.endswith("/jobs?per_page=100"):
+            return {"jobs": [{"name": name, "conclusion": "success"} for name in required_jobs]}
+        return {
+            "head_sha": commit,
+            "head_branch": "v2",
+            "status": "completed",
+            "conclusion": "success",
+            "path": ".github/workflows/ci.yml",
+            "html_url": "https://github.example.invalid/actions/runs/123",
+        }
+
+    monkeypatch.setattr(release, "_gh_json", evidence)
+    result = verify_github_run(root, "123", commit)
+    assert result["head_sha"] == commit
+    assert result["repository_visibility"] == "private"
+
+    def wrong_subject(_root: Path, endpoint: str) -> dict:
+        value = evidence(_root, endpoint)
+        if endpoint.endswith("/actions/runs/123"):
+            value = {**value, "head_sha": "0" * 40}
+        return value
+
+    monkeypatch.setattr(release, "_gh_json", wrong_subject)
+    with pytest.raises(ReleaseError, match="exact private v2 subject"):
+        verify_github_run(root, "123", commit)
