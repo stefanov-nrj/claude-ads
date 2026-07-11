@@ -144,3 +144,60 @@ def test_powershell_scripts_parse(script):
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell is not installed")
+def test_powershell_install_uninstall_round_trip_preserves_unrelated_skill(tmp_path):
+    skills = tmp_path / "skills"
+    agents = tmp_path / "agents"
+    install = subprocess.run(
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(ROOT / "install.ps1"),
+            "-Target",
+            "claude",
+            "-SkillDir",
+            str(skills),
+            "-AgentDir",
+            str(agents),
+            "-Source",
+            "local",
+            "-RepoDir",
+            str(ROOT),
+            "-NoDeps",
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+    assert (skills / "ads" / "SKILL.md").is_file()
+    assert (skills / ".claude-ads-claude.manifest.json").is_file()
+
+    unrelated = skills / "ads-weather"
+    unrelated.mkdir()
+    unrelated.joinpath("SKILL.md").write_text("user-owned\n", encoding="utf-8")
+    uninstall = subprocess.run(
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(ROOT / "uninstall.ps1"),
+            "-Target",
+            "claude",
+            "-SkillDir",
+            str(skills),
+            "-AgentDir",
+            str(agents),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
+    assert not (skills / "ads" / "SKILL.md").exists()
+    assert unrelated.joinpath("SKILL.md").read_text(encoding="utf-8") == "user-owned\n"
