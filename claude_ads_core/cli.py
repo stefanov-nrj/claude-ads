@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import __version__
+from .adapters import AdapterError, GenericCSVExportAdapter
 from .contracts import CONTRACT_NAMES, ContractError, load_contract, validate_contract
 from .scoring import ScoringError, score_account, score_portfolio
 
@@ -43,6 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = commands.add_parser("status", help="show a report bundle's deterministic status")
     status.add_argument("path")
+
+    ingest = commands.add_parser("ingest-export", help="normalize a generic CSV export")
+    ingest.add_argument("--platform", required=True)
+    ingest.add_argument("path")
     return parser
 
 
@@ -79,7 +84,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "status": scoring["status"],
                 }
             )
-    except (ContractError, ScoringError) as exc:
+        elif args.command == "ingest-export":
+            _emit(GenericCSVExportAdapter(args.platform).read_snapshot(args.path))
+    except (AdapterError, ContractError, ScoringError) as exc:
         print(json.dumps({"status": "invalid", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 2
     return 0

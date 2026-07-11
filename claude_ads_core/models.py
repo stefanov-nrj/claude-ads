@@ -71,6 +71,7 @@ class Finding(TypedDict):
     status: Literal["pass", "fail", "unknown", "not_applicable"]
     evidence: list[dict[str, Any]]
     confidence: Literal["high", "medium", "low", "none"]
+    source_classification: NotRequired[Literal["evidence_based", "practitioner", "contested", "folklore"]]
     observation: str
     diagnosis: str
     recommendation: str

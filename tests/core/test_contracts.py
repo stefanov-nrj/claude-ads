@@ -148,6 +148,21 @@ def test_unknown_may_have_no_evidence():
     validate_contract("finding", payload)
 
 
+@pytest.mark.parametrize("classification", ["evidence_based", "practitioner", "contested", "folklore"])
+def test_finding_accepts_source_classification_independently_of_confidence(classification: str):
+    payload = finding()
+    payload["source_classification"] = classification
+    payload["confidence"] = "low"
+    validate_contract("finding", payload)
+
+
+def test_finding_rejects_unknown_source_classification():
+    payload = finding()
+    payload["source_classification"] = "high"
+    with pytest.raises(ContractError, match="source_classification"):
+        validate_contract("finding", payload)
+
+
 def test_report_bundle_recursively_validates_nested_contracts():
     payload = report_bundle()
     payload["account_snapshot"]["account"]["platform"] = "unsupported"

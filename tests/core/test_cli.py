@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from claude_ads_core.cli import main
 from tests.core.test_contracts import account_snapshot, report_bundle
@@ -50,3 +51,12 @@ def test_score_command_uses_json_inputs(tmp_path, capsys):
     output = json.loads(capsys.readouterr().out)
     assert output["health_score"] == 100.0
     assert output["status"] == "normal"
+
+
+def test_ingest_export_command_emits_normalized_snapshot(capsys):
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "exports" / "google.csv"
+    assert main(["ingest-export", "--platform", "google", str(fixture)]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == "1.0.0"
+    assert output["account"]["platform"] == "google"
+    assert output["spend"] == 42.5

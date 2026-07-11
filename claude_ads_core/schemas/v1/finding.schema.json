@@ -10,6 +10,7 @@
     "status": {"enum": ["pass", "fail", "unknown", "not_applicable"]},
     "evidence": {"type": "array", "items": {"type": "object"}},
     "confidence": {"enum": ["high", "medium", "low", "none"]},
+    "source_classification": {"enum": ["evidence_based", "practitioner", "contested", "folklore"]},
     "observation": {"type": "string"},
     "diagnosis": {"type": "string"},
     "recommendation": {"type": "string"},

@@ -218,6 +218,13 @@ def _validate_finding(payload: Mapping[str, Any]) -> None:
         _require_object(item, f"$.evidence[{index}]")
     if payload["confidence"] not in {"high", "medium", "low", "none"}:
         raise ContractError("$.confidence is invalid")
+    if "source_classification" in payload and payload["source_classification"] not in {
+        "evidence_based",
+        "practitioner",
+        "contested",
+        "folklore",
+    }:
+        raise ContractError("$.source_classification is invalid")
     for field in ("observation", "diagnosis", "recommendation"):
         _require_string(payload[field], f"$.{field}", nonempty=False)
     if payload["status"] in {"pass", "fail"} and not evidence:

@@ -1,6 +1,7 @@
 """Deterministic Claude Ads contracts and scoring engine."""
 
 from .contracts import ContractError, load_contract, validate_contract
+from .adapters import Adapter, AdapterCapabilities, GenericCSVExportAdapter, MutationDisabledError
 from .models import AccountSnapshot, ControlDefinition, Finding, ReportBundle, RunManifest
 from .scoring import (
     CATEGORY_WEIGHT_TOTAL,
@@ -16,9 +17,13 @@ __all__ = [
     "CATEGORY_WEIGHT_TOTAL",
     "SEVERITY_WEIGHTS",
     "AccountSnapshot",
+    "Adapter",
+    "AdapterCapabilities",
     "ContractError",
     "ControlDefinition",
     "Finding",
+    "GenericCSVExportAdapter",
+    "MutationDisabledError",
     "PortfolioResult",
     "ReportBundle",
     "RunManifest",
