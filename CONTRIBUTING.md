@@ -1,99 +1,102 @@
-# Contributing to claude-ads
+# Contributing to Claude Ads
 
-Thanks for your interest in contributing! Here's how to get involved.
+Claude Ads accepts focused, source-grounded changes that preserve privacy,
+capability honesty, deterministic verification, and read-only defaults.
 
-## Reporting Bugs
+## Before changing code or guidance
 
-Open a [GitHub Issue](https://github.com/AI-Marketing-Hub/claude-ads/issues) with:
+1. Read `AGENTS.md`, the control-plane boundaries, and the relevant skill,
+   implementation, fixtures, and tests.
+2. Search the ecosystem disposition ledger and current issues to avoid repeating
+   reviewed work.
+3. For platform, policy, API, regulation, benchmark, or specification changes,
+   collect current official or primary evidence and update source/claim coverage.
+4. For an external repository idea, record its license and provenance. Public does
+   not mean reusable.
 
-- Your OS and Python version
-- The full error output (copy from terminal)
-- The command or step that failed
-- The ad platform and account context (if applicable)
+Never commit credentials, client/account exports, customer data, private prompts,
+raw private research, local absolute paths, or agent transcripts.
 
-## Suggesting Features
-
-Use [GitHub Discussions](https://github.com/AI-Marketing-Hub/claude-ads/discussions) for feature ideas and questions.
-
-## Pull Requests
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Make your changes
-4. Test with a sample ad account before submitting
-5. Submit a PR with a clear description of what changed and why
-
-### Development Setup
+## Development setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claude-ads.git
+git clone https://github.com/AI-Marketing-Hub/claude-ads.git
 cd claude-ads
-bash install.sh
+python -m venv .venv
+.venv/bin/python -m pip install -e . -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest -q
 ```
 
-### General Guidelines
+Install the current checkout into a host only when needed:
 
-- All Python scripts should output JSON for Claude Code to parse
-- Shell scripts should use `set -euo pipefail` for safety
-- SKILL.md files must stay under 500 lines / 5000 tokens
-- Reference files (`ads/references/*.md`) should be focused and under 200 lines
-- Follow kebab-case naming for all directories and files
-- Keep dependencies minimal — prefer stdlib over third-party where possible
+```bash
+bash install.sh --source=local
+```
 
-## Adding a New Sub-Skill
+Do not use curl-to-shell installation or silent global Python mutation.
 
-Sub-skills live under `skills/ads-<name>/` and follow a strict structure. To add one:
+## Pull requests
 
-1. **Pick a name.** Kebab-case, prefixed with `ads-`. Example: `ads-amazon`, `ads-attribution`.
-2. **Mirror an existing sub-skill** as a template — `skills/ads-microsoft/` is a clean, simple example; `skills/ads-google/` is the densest.
-3. **Required frontmatter** in `skills/ads-<name>/SKILL.md`:
-   ```yaml
-   ---
-   name: ads-<name>
-   description: "<Functional summary of what the skill does>. Use when user says <trigger1>, <trigger2>, ..., or <triggerN>."
-   user-invokable: false
-   tested_date: YYYY-MM-DD
-   tested_with: claude-code v2.x
-   ---
-   ```
-   The `user-invokable: false` flag means the skill is dispatched by the `ads` orchestrator, not invoked directly via `/ads-<name>`.
-4. **Trigger discipline.** The `description:` field is what the LLM uses to route. Include 6–12 trigger synonyms (platform name, colloquial phrasings, abbreviations, feature names).
-5. **Update the orchestrator.** Add a row to the routing table in `ads/SKILL.md` and update the routing logic if needed.
-6. **Add a reference file** if your skill needs domain knowledge — see "Adding a Reference File" below.
-7. **Test it** by invoking the orchestrator with one of your trigger phrases — confirm your sub-skill loads.
+- Create a focused branch and keep unrelated changes out.
+- State the problem, evidence, public contract changes, risks, and verification.
+- Add regression tests derived from the failure or intended capability.
+- Preserve JSON schema compatibility or declare a major contract change.
+- Update the capability manifest only when implementation, fixtures, tests, and
+  evidence justify the new status.
+- Run the repository audit and full test suite.
 
-## Adding a Reference File
+```bash
+python scripts/release.py audit
+python -m pytest -q
+```
 
-Reference files in `ads/references/` are loaded on-demand by sub-skills (progressive disclosure). Use them for:
+Required remote CI must pass; local success does not substitute for skipped or
+billing-blocked checks.
 
-- Audit checklists (e.g., `google-audit.md`)
-- Creative specs per platform (e.g., `meta-creative-specs.md`)
-- Decision trees, benchmarks, compliance tables
+## Skills and agents
 
-Guidelines:
+- Skill directories use lowercase kebab-case and `ads-` names.
+- `SKILL.md` frontmatter contains only `name` and a comprehensive `description`.
+- Put what the skill does and when it triggers in the description.
+- Keep `SKILL.md` under approximately 500 lines/5,000 tokens.
+- Move detailed facts, controls, examples, and schemas behind progressive
+  disclosure.
+- Use ordered checks, explicit precedence, operational reasons, untrusted-input
+  boundaries, output contracts, and recovery behavior.
+- Workers return schema-valid results; one conductor owns final artifacts.
+- Agents receive least-privilege tools and no implicit mutation authority.
 
-- Keep each file under 200 lines so it fits in the dispatching agent's context.
-- Add a dated header comment: `<!-- Updated: YYYY-MM-DD | v<x.y> -->`.
-- Cite sources inline where possible (`<!-- Sources: WordStream 2025 (annual report), Triple Whale 2025 e-commerce -->`).
-- For audit checklists, follow the existing ID convention: platform-letter + number (G01, M01, L01, T01, B01, A01).
+Add positive, near-miss, ambiguous, and collision cases for new routing surfaces.
+High-risk behavior also belongs in `evals/v2-behavior-evals.json`.
 
-## Testing Audit Checks
+## Platform controls and sources
 
-Until the Wave 2 eval harness lands, regression testing is manual:
+- Preserve stable control IDs once released.
+- Model applicability, availability, geography, account maturity, required inputs,
+  severity, source IDs, stability, and scoring behavior.
+- Keep optional, beta, premium, unavailable, and ineligible features unscored.
+- Do not duplicate penalties for one root problem.
+- Do not add a precise threshold without source, scope, methodology, and expiry.
+- Unknown and not-applicable are valid results, not failures to hide.
 
-- The `evals/creative-evals.json` file contains routing snapshots (which trigger phrase loads which sub-skill).
-- Validate your sub-skill loads correctly on its triggers by running the orchestrator and checking the dispatched skill name.
-- For new audit checks, add a synthetic example account export (anonymized) to a fixture directory and verify the check fires correctly with `pass` / `warning` / `fail` outputs.
-- When the `tests/` directory lands in Wave 2, all new checks will be expected to have a corresponding fixture + golden output. Plan ahead by structuring checks with deterministic pass/warn/fail conditions.
+## Adapters and account changes
 
-## Reporting Bugs
+Every adapter implements capability discovery, read snapshot, draft, apply,
+verify, and rollback interfaces. New adapters begin read-only.
 
-Open a [GitHub Issue](https://github.com/AI-Marketing-Hub/claude-ads/issues) using the bug-report template. Include OS + Python version, the full error output, the command that failed, and the platform context.
+A write capability requires sandbox fixtures, idempotency, exact object scope,
+approval, ceilings, verification, audit, rollback, and adversarial tests. Permanent
+deletion is unsupported in v2.
 
-## Suggesting Features
+## Security reports
 
-Use [GitHub Discussions](https://github.com/AI-Marketing-Hub/claude-ads/discussions) for feature ideas. For larger proposals (new platforms, new sub-skills), open a feature-request issue first to align on scope.
+Do not open a public issue for a vulnerability. Use the repository's private
+[GitHub Security Advisory](https://github.com/AI-Marketing-Hub/claude-ads/security/advisories/new)
+channel and include the affected version, reproduction, and impact.
 
-## Security
+## Release work
 
-For security issues, **do not open a public issue**. Use the [private GitHub Security Advisory channel](https://github.com/AI-Marketing-Hub/claude-ads/security/advisories/new). See `SECURITY.md`.
+Release candidates must pass source freshness, deterministic/model evaluations,
+security/privacy/license scans, installation matrices, reproducible packaging,
+SBOM/checksum generation, and fresh-context verification. Repository visibility
+remains private until a separate public-release gate is explicitly approved.

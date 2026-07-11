@@ -6,7 +6,7 @@ If you discover a security vulnerability, please report it responsibly via the *
 
 1. **Do NOT open a public issue** (public issues expose the vulnerability before it can be patched).
 2. Open a [GitHub Security Advisory](https://github.com/AI-Marketing-Hub/claude-ads/security/advisories/new) on this repo. This is the only supported private disclosure channel — do not email or DM.
-3. Include: affected version (e.g. v1.5.1), reproduction steps, and impact assessment.
+3. Include: affected version (for example v2.0.0), reproduction steps, and impact assessment.
 
 We aim to acknowledge reports within **48 hours** and provide an estimated resolution timeline within **7 days**.
 
@@ -17,7 +17,8 @@ Only the latest version receives security updates.
 ## Security Practices
 
 - No credentials or API keys are stored in this repository
-- Install scripts write only to user-level directories (`~/.claude/`, `~/.codex/`, `~/.cursor/`, etc. per `--target`)
+- Install scripts write only to the configured host roots, canonicalize destinations,
+  reject symlink escapes, and record an exact ownership manifest
 - Python dependencies install in isolated virtual environments
 - Shared SSRF validation module (`scripts/url_utils.py`) gates every user-supplied URL — IPv4 RFC1918 / loopback / link-local / CGNAT and IPv6 unspecified / loopback / ULA / link-local / IPv4-mapped are all blocked, with fail-closed DNS resolution
 - Error messages are scrubbed via `sanitize_error()` before reaching stdout, JSON output, or audit reports — strips `key=`, `token=`, `secret=`, `password=`, and bare `Bearer <token>` substrings
@@ -35,7 +36,7 @@ The following endpoints may be contacted at runtime. All user-supplied URLs pass
 | `api.stability.ai` | Stability AI image generation (fallback path) | `generate_image.py` | API key (env var) |
 | `api.replicate.com` | Replicate model invocation (fallback path) | `generate_image.py` | API key (env var) |
 | Replicate-returned result URL | Fetch generated image bytes | `generate_image.py` | HTTPS check + SSRF revalidation via `url_utils.validate_url` (v1.7.0+) |
-| User-supplied URLs | Landing page analysis, screenshot capture, page fetch | `analyze_landing.py`, `capture_screenshot.py`, `fetch_page.py` | SSRF blocklist via `url_utils.validate_url` |
+| User-supplied URLs | Landing page analysis, screenshot capture, page fetch | `analyze_landing.py`, `capture_screenshot.py`, `fetch_page.py` | Pre-dispatch SSRF guard for requests, redirects, frames, and browser subresources |
 | `github.com` (read-only, via git clone) | Skill installation | `install.sh`, `install.ps1` | Hardcoded repo URL |
 | PyPI (`pypi.org`, `files.pythonhosted.org`) | Python dependency install | `install.sh`, `install.ps1` | Hardcoded; trusted by `pip` |
 
