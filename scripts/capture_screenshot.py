@@ -16,15 +16,17 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from typing import Mapping, Any
 from urllib.parse import urlparse
 
+from claude_ads_core.contracts import ContractError, load_contract, validate_contract
 from url_utils import (
     EgressSandboxAttestation,
+    artifact_locator,
     create_guarded_browser_context,
     load_egress_sandbox_attestation,
     resolve_output_path,
     sanitize_error,
-    sanitize_url,
     validate_browser_url,
 )
 
@@ -55,9 +57,13 @@ def _write_capture_receipt(
     screenshot_path: Path,
     validated_url: str,
     attestation: EgressSandboxAttestation,
+    data_lifecycle: Mapping[str, Any],
     screenshot_data: bytes | None = None,
 ) -> Path:
     """Atomically bind a screenshot digest to its verified egress authority."""
+    validate_contract("data-lifecycle", data_lifecycle)
+    if data_lifecycle["classification"] != "confidential":
+        raise ValueError("Screenshot capture requires a confidential data lifecycle.")
     screenshot_data = screenshot_data if screenshot_data is not None else screenshot_path.read_bytes()
     if not screenshot_data:
         raise ValueError("Screenshot artifact is empty; receipt was not written.")
@@ -65,13 +71,14 @@ def _write_capture_receipt(
         "schema_version": "1.0.0",
         "operation": "browser-screenshot-capture",
         "privacy_class": "confidential",
+        "data_lifecycle": dict(data_lifecycle),
         "recorded_at": _utc_now(),
         "target": {
             "origin": _target_origin(validated_url),
             "url_sha256": hashlib.sha256(validated_url.encode("utf-8")).hexdigest(),
         },
         "artifact": {
-            "filename": screenshot_path.name,
+            "locator": artifact_locator(screenshot_path),
             "sha256": hashlib.sha256(screenshot_data).hexdigest(),
             "size": len(screenshot_data),
         },
@@ -116,21 +123,24 @@ def capture_screenshot(
     timeout: int = 30000,
     *,
     egress_attestation: EgressSandboxAttestation | None = None,
+    data_lifecycle: Mapping[str, Any] | None = None,
 ) -> dict:
     """
     Capture a screenshot of an ad landing page.
 
     Returns:
-        Dictionary with url, output, viewport, success, error
+        Dictionary with hashed target identity, relative artifact locators, and status.
     """
     result = {
-        "url": sanitize_url(url),
-        "output": str(output_path),
+        "target_url_sha256": hashlib.sha256(url.encode("utf-8")).hexdigest(),
+        "target_origin": None,
+        "output_locator": None,
         "viewport": viewport,
         "success": False,
         "error": None,
-        "receipt": None,
+        "receipt_locator": None,
         "egress_attestation": None,
+        "data_lifecycle": dict(data_lifecycle) if data_lifecycle is not None else None,
     }
 
     if viewport not in VIEWPORTS:
@@ -140,10 +150,18 @@ def capture_screenshot(
     vp = VIEWPORTS[viewport]
 
     try:
+        if data_lifecycle is None:
+            raise ValueError("A validated data lifecycle is required for screenshot capture.")
+        validate_contract("data-lifecycle", data_lifecycle)
+        if data_lifecycle["classification"] != "confidential":
+            raise ValueError("Screenshot capture requires a confidential data lifecycle.")
         url = validate_browser_url(url, egress_attestation=egress_attestation)
         output_path = resolve_output_path(output_path, create_parent=True)
+        result["target_origin"] = _target_origin(url)
+        result["output_locator"] = artifact_locator(output_path)
     except ValueError as e:
-        result["error"] = sanitize_error(e)
+        print(f"Capture preflight failed: {sanitize_error(e)}", file=sys.stderr)
+        result["error"] = "capture preflight failed; inspect private ephemeral runtime logs"
         return result
 
     try:
@@ -173,13 +191,14 @@ def capture_screenshot(
                     output_path,
                     url,
                     egress_attestation,
+                    data_lifecycle,
                     screenshot_data,
                 )
             except Exception:
                 output_path.unlink(missing_ok=True)
                 raise
-            result["output"] = str(output_path)
-            result["receipt"] = str(receipt_path)
+            result["output_locator"] = artifact_locator(output_path)
+            result["receipt_locator"] = artifact_locator(receipt_path)
             result["egress_attestation"] = egress_attestation.audit_reference()
             result["success"] = True
             browser.close()
@@ -187,7 +206,8 @@ def capture_screenshot(
     except PlaywrightTimeout:
         result["error"] = f"Page load timed out after {timeout}ms"
     except Exception as e:
-        result["error"] = sanitize_error(e)
+        print(f"Capture failed: {sanitize_error(e)}", file=sys.stderr)
+        result["error"] = "capture failed; inspect private ephemeral runtime logs"
 
     return result
 
@@ -208,12 +228,25 @@ def main():
             "key ID, and environment ID must be provisioned through environment variables."
         ),
     )
+    parser.add_argument(
+        "--data-lifecycle",
+        required=True,
+        help="Path to a valid confidential data-lifecycle JSON contract.",
+    )
 
     args = parser.parse_args()
 
     try:
         egress_attestation = load_egress_sandbox_attestation(args.egress_attestation)
     except ValueError as exc:
+        print(f"Error: {sanitize_error(exc)}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        data_lifecycle = load_contract("data-lifecycle", args.data_lifecycle)
+        if data_lifecycle["classification"] != "confidential":
+            raise ContractError("Screenshot capture requires classification=confidential")
+    except ContractError as exc:
         print(f"Error: {sanitize_error(exc)}", file=sys.stderr)
         sys.exit(1)
 
@@ -241,11 +274,12 @@ def main():
             full_page=args.full,
             timeout=args.timeout,
             egress_attestation=egress_attestation,
+            data_lifecycle=data_lifecycle,
         )
 
         if result["success"]:
-            print(f"  Saved to {output_path}")
-            print(f"  Receipt: {result['receipt']}")
+            print(f"  Saved artifact: {result['output_locator']}")
+            print(f"  Receipt: {result['receipt_locator']}")
         else:
             print(f"  Failed: {result['error']}")
 

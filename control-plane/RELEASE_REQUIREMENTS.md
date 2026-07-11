@@ -65,6 +65,12 @@ capability loses its test evidence, or required remote CI does not pass.
   retain only the redacted deterministic gate report as ignored, external
   release evidence. It must not alter the exact Git subject it verifies or enter
   the product archive.
+- Each model run requires separate runner and evaluator Ed25519 signatures over
+  the exact subject, runtime, case receipts, rubric judgments, and result. Supply
+  external trust and implementation-principal exclusions through
+  `CLAUDE_ADS_MODEL_EVAL_TRUST_BUNDLE_JSON` and
+  `CLAUDE_ADS_MODEL_EVAL_IMPLEMENTATION_PRINCIPALS_JSON`. Repository-local,
+  forged, stale, role-mismatched, self-signed, or self-review evidence fails closed.
 - A fresh-context verifier confirms completion claims from artifacts and test
   output, not from the implementation conversation.
 

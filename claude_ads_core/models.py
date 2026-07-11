@@ -41,6 +41,7 @@ class RunManifest(TypedDict):
     adapters: list[AdapterRecord]
     sources: list[str]
     privacy_class: Literal["public", "internal", "confidential", "restricted"]
+    data_lifecycle: dict[str, Any]
     worker_status: dict[str, Literal["pending", "running", "completed", "failed", "skipped"]]
     completeness: Literal["complete", "partial", "failed"]
 

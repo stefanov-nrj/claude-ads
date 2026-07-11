@@ -9,6 +9,17 @@ PrivacyClass = Literal["public", "internal", "confidential", "restricted"]
 ArtifactStatus = Literal["draft", "complete", "partial", "failed"]
 
 
+class DataLifecycle(TypedDict):
+    schema_version: Literal["1.0.0"]
+    lifecycle_id: str
+    classification: PrivacyClass
+    retention: dict[str, Any]
+    encryption: dict[str, Any]
+    access: dict[str, Any]
+    deletion: dict[str, Any]
+    incident: dict[str, Any]
+
+
 class SetupProfile(TypedDict):
     schema_version: Literal["1.0.0"]
     artifact_type: Literal["setup-profile"]
@@ -23,6 +34,7 @@ class SetupProfile(TypedDict):
     mutation_authority: Literal["none", "draft-only", "approved-plan-required"]
     approver_ids: list[str]
     assumptions: list[str]
+    data_lifecycle: DataLifecycle
 
 
 class BrandProfile(TypedDict):
@@ -38,6 +50,7 @@ class BrandProfile(TypedDict):
     source_assets_authorized: bool
     missing_fields: list[str]
     status: ArtifactStatus
+    data_lifecycle: DataLifecycle
 
 
 class MediaPlan(TypedDict):
@@ -52,6 +65,7 @@ class MediaPlan(TypedDict):
     assumptions: list[str]
     exclusions: list[str]
     status: ArtifactStatus
+    data_lifecycle: DataLifecycle
 
 
 class CreativeBrief(TypedDict):
@@ -68,6 +82,7 @@ class CreativeBrief(TypedDict):
     specification_source_ids: list[str]
     human_review: Literal["pending", "approved", "rejected"]
     status: ArtifactStatus
+    data_lifecycle: DataLifecycle
 
 
 class GenerationManifest(TypedDict):
@@ -81,6 +96,7 @@ class GenerationManifest(TypedDict):
     failures: list[dict[str, str]]
     human_review: Literal["pending", "approved", "rejected"]
     status: ArtifactStatus
+    data_lifecycle: DataLifecycle
 
 
 class MonitoringBundle(TypedDict):
@@ -93,6 +109,7 @@ class MonitoringBundle(TypedDict):
     missing_inputs: list[str]
     contradictions: list[str]
     completeness: Literal["complete", "partial", "failed"]
+    data_lifecycle: DataLifecycle
 
 
 class ExperimentArtifact(TypedDict):
@@ -106,6 +123,7 @@ class ExperimentArtifact(TypedDict):
     result: dict[str, Any] | None
     decision: str | None
     status: ArtifactStatus
+    data_lifecycle: DataLifecycle
 
 
 class MutationPlan(TypedDict):
@@ -130,6 +148,7 @@ class MutationPlan(TypedDict):
     rollback: dict[str, Any]
     remote_precondition_sha256: str
     status: Literal["draft", "approved", "applied", "verified", "rolled-back"]
+    data_lifecycle: DataLifecycle
 
 
 class OrchestrationRun(TypedDict):
@@ -143,6 +162,7 @@ class OrchestrationRun(TypedDict):
     privacy_class: PrivacyClass
     mutation_authority: Literal["none", "repository-only", "draft-external", "approved-external"]
     status: Literal["open"]
+    data_lifecycle: DataLifecycle
 
 
 class OrchestrationTask(TypedDict):

@@ -62,6 +62,28 @@ For every asset record:
   and human approval;
 - crop, text, logo, disclosure, and placement-preview validation.
 
-Do not store credentials, raw private prompts, personal data, or provider tokens in
-the repository or client report. Generation creates a draft, not an authorized ad
-upload or account mutation.
+Use the canonical summary `[redacted: raw prompt is ephemeral and is not persisted]`
+beside the prompt hash. Store repository/run-relative artifact locators only. Do not
+store credentials, raw private prompts, resolved local filesystem paths, personal
+data, or provider tokens in shipped JSON, the repository, or a client report.
+Generation creates a draft, not an authorized ad upload or account mutation.
+
+## Local fallback CLI
+
+The bundled `scripts/generate_image.py` is a provider-adapter fallback, not a
+capability-discovery system. It must not select, upgrade, or substitute a provider
+or model. After discovery and operator approval, pass both identifiers explicitly:
+
+```bash
+python scripts/generate_image.py "approved prompt" \
+  --provider "$ADS_IMAGE_PROVIDER" \
+  --model "$ADS_IMAGE_MODEL" \
+  --data-lifecycle lifecycle.json \
+  --output .claude-ads/runs/<run-id>/creative.png
+```
+
+`ADS_IMAGE_PROVIDER` and `ADS_IMAGE_MODEL` may supply those values when the
+corresponding flags are omitted. Absence of either value is `needs_input` and must
+fail before credential lookup or network dispatch. A rejected or unavailable
+model is not automatically replaced with another model. Reference-image input is
+allowed only when the selected adapter explicitly implements that capability.

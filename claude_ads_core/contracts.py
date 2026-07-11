@@ -142,7 +142,7 @@ def _validate_account_snapshot(payload: Mapping[str, Any]) -> None:
 def _validate_run_manifest(payload: Mapping[str, Any]) -> None:
     _require_keys(
         payload,
-        ("schema_version", "run_id", "started_at", "scopes", "adapters", "sources", "privacy_class", "worker_status", "completeness"),
+        ("schema_version", "run_id", "started_at", "scopes", "adapters", "sources", "privacy_class", "data_lifecycle", "worker_status", "completeness"),
     )
     _validate_version(payload)
     _require_string(payload["run_id"], "$.run_id")
@@ -161,6 +161,13 @@ def _validate_run_manifest(payload: Mapping[str, Any]) -> None:
             raise ContractError(f"$.adapters[{index}].mode is invalid")
     if payload["privacy_class"] not in {"public", "internal", "confidential", "restricted"}:
         raise ContractError("$.privacy_class is invalid")
+    try:
+        validate_workflow_contract("data-lifecycle", payload["data_lifecycle"])
+    except WorkflowContractError as exc:
+        raise ContractError(f"$.data_lifecycle: {exc}") from exc
+    lifecycle = _require_object(payload["data_lifecycle"], "$.data_lifecycle")
+    if lifecycle.get("classification") != payload["privacy_class"]:
+        raise ContractError("$.privacy_class must match $.data_lifecycle.classification")
     statuses = _require_object(payload["worker_status"], "$.worker_status")
     for worker, status in statuses.items():
         _require_string(worker, "$.worker_status key")

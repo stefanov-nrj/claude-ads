@@ -1,6 +1,6 @@
 ---
 name: ads-audit
-description: "Run a source-grounded paid-advertising audit for one or more of Google, Meta, YouTube, LinkedIn, TikTok, Microsoft, Apple, Amazon, Reddit, Pinterest, Snapchat, and X. Use for full ad checks, account health reviews, paid-media diagnostics, advertising audits, PPC audits, spend audits, tracking audits, or requests to identify prioritized opportunities and risks."
+description: "Run a source-grounded paid-advertising audit for one or more of Google, Meta, YouTube, LinkedIn, TikTok, Microsoft, Apple, Amazon, Reddit, Pinterest, Snapchat, and X. Use for full ad checks, account health reviews, paid-media diagnostics, partial audits after authentication or worker failure, missing-platform weighting, beta-feature eligibility and scoring, spend audits, tracking audits, or prioritized opportunities and risks."
 ---
 
 # Paid Advertising Audit
@@ -93,6 +93,25 @@ fragment when the installed schema is available.
 
 Never substitute feature awareness for account health. Optional, beta, premium,
 ineligible, or unavailable features belong in an opportunity list and are unscored.
+
+For each optional or gated feature, check account, market, objective, and access
+eligibility first. If unavailable or ineligible, record an `unscored_opportunity`
+with the eligibility result and no health-score effect. Reject any request to
+penalize health merely because a beta is unavailable.
+
+## Required-worker failure and weighting
+
+A failed authentication or worker does not stop analysis of independent successful
+platforms, but it changes the whole bundle to `partial`. Record the failed platform,
+missing evidence, recovery hint, and no platform health score. Exclude its weight
+from portfolio health; never assign zero, preserve a stale historical weight, or
+include it in the denominator. Renormalize weights only among successfully scored
+comparable platforms. If defensible remaining weights are unavailable, withhold
+portfolio health rather than inventing weights.
+
+Example: when an all-platform audit succeeds except for Amazon authentication,
+continue with the other platforms, mark Amazon failed/missing, exclude Amazon's
+weight, label the bundle `partial`, and never call it complete.
 
 ## Synthesis boundaries
 

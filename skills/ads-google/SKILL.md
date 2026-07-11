@@ -1,6 +1,6 @@
 ---
 name: ads-google
-description: "Audit Google Ads measurement, Search, Shopping, Performance Max, Demand Gen, YouTube-linked inventory, keywords and search terms, creative assets, bidding, budgets, settings, and policy. Use for Google Ads, AdWords, Search campaigns, Shopping, Performance Max, PMax, Demand Gen, GAQL, Google conversion tracking, or Google campaign optimization."
+description: "Audit Google Ads measurement, Search, Shopping, Performance Max, Demand Gen, YouTube-linked inventory, keywords and search terms, negative-keyword generation or review, creative assets, bidding, budgets, settings, and policy. Use for Google Ads, AdWords, Search campaigns, search terms reports, broad negatives, Shopping, Performance Max, PMax, Demand Gen, GAQL, Google conversion tracking, or Google campaign optimization."
 ---
 
 # Google Ads Audit
@@ -28,6 +28,10 @@ description: "Audit Google Ads measurement, Search, Shopping, Performance Max, D
   sample size, conversion lag, and account maturity.
 - Keep optional, beta, premium, immutable, unavailable, and ineligible features
   unscored.
+- Never generate, suggest, or illustrate specific negative keywords without a
+  search terms report plus business-relevance and overblocking review. Request
+  that evidence; do not substitute a generic negative list. Do not name sample,
+  starter, brand-safety, or "commonly excluded" terms as a workaround.
 - Do not issue universal pause, bid, budget, learning-phase, or attribution rules.
 - Keep every account change as a draft until the main mutation gate passes.
 

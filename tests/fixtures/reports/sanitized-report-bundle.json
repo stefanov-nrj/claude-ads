@@ -8,6 +8,16 @@
     "adapters": [{"platform": "google", "mode": "export"}],
     "sources": ["sanitized-google-export.csv", "official-google-help"],
     "privacy_class": "internal",
+    "data_lifecycle": {
+      "schema_version": "1.0.0",
+      "lifecycle_id": "fixture-report-lifecycle",
+      "classification": "internal",
+      "retention": {"minimum_seconds": 0, "mode": "operator-defined", "delete_after": "2026-07-12T16:00:00Z", "purpose": "Render and verify the sanitized fixture report", "exception_reason": null},
+      "encryption": {"at_rest": "verified", "in_transit": "verified", "evidence_refs": ["operator-attestation:fixture-encryption"]},
+      "access": {"owner": "fixture-owner", "authorized_roles": ["fixture-runner"], "access_log_locator": null},
+      "deletion": {"status": "scheduled", "method": "Fixture cleanup", "verification_required": true, "verification_artifact_locator": null},
+      "incident": {"owner": "fixture-owner", "reporting_channel": "Private security channel", "status": "not-triggered", "record_locator": null}
+    },
     "worker_status": {"google": "completed", "tracking": "failed"},
     "completeness": "partial"
   },

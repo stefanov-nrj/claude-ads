@@ -678,10 +678,21 @@ def test_screenshot_receipt_binds_artifact_and_attestation_without_url_path(
     screenshot = tmp_path / "landing.png"
     screenshot.write_bytes(b"sanitized-png-fixture")
     attestation = _load_test_attestation(tmp_path)
+    lifecycle = {
+        "schema_version": "1.0.0",
+        "lifecycle_id": "capture-test",
+        "classification": "confidential",
+        "retention": {"minimum_seconds": 0, "mode": "operator-defined", "delete_after": "2026-07-12T16:00:00Z", "purpose": "Verify sanitized capture receipt", "exception_reason": None},
+        "encryption": {"at_rest": "verified", "in_transit": "verified", "evidence_refs": ["operator-attestation:test-encryption"]},
+        "access": {"owner": "test-owner", "authorized_roles": ["test-runner"], "access_log_locator": None},
+        "deletion": {"status": "scheduled", "method": "Test cleanup", "verification_required": True, "verification_artifact_locator": None},
+        "incident": {"owner": "test-owner", "reporting_channel": "Private test channel", "status": "not-triggered", "record_locator": None},
+    }
     receipt_path = _write_capture_receipt(
         screenshot,
         "https://example.com/private/customer-42?utm_campaign=secret",
         attestation,
+        lifecycle,
     )
 
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -689,9 +700,11 @@ def test_screenshot_receipt_binds_artifact_and_attestation_without_url_path(
     assert receipt["privacy_class"] == "confidential"
     assert receipt["target"]["origin"] == "https://example.com"
     assert "customer-42" not in receipt_path.read_text(encoding="utf-8")
-    assert receipt["artifact"]["filename"] == "landing.png"
+    assert receipt["artifact"]["locator"] == "landing.png"
     assert receipt["artifact"]["sha256"] == hashlib.sha256(screenshot.read_bytes()).hexdigest()
     assert receipt["egress_attestation"]["attestation_id"] == "attestation:test-001"
+    assert receipt["data_lifecycle"]["lifecycle_id"] == "capture-test"
+    assert str(tmp_path) not in receipt_path.read_text(encoding="utf-8")
 
 
 # ─── Redirect SSRF revalidation (v1.7.1 hardening) ──────────────────────────

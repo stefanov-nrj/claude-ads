@@ -12,7 +12,7 @@ the summary.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
@@ -20,6 +20,26 @@ import re
 import subprocess
 import sys
 from typing import Any, Mapping, Sequence
+
+try:
+    from evals.model_evidence_auth import (
+        ModelEvidenceAuthError,
+        load_external_trust,
+        sha256_json,
+        verify_envelope,
+    )
+except ModuleNotFoundError:  # direct ``python evals/model_eval_gate.py`` execution
+    _evals_dir = str(Path(__file__).resolve().parent)
+    sys.path.insert(0, _evals_dir)
+    try:
+        from model_evidence_auth import (  # type: ignore[no-redef]
+            ModelEvidenceAuthError,
+            load_external_trust,
+            sha256_json,
+            verify_envelope,
+        )
+    finally:
+        sys.path.remove(_evals_dir)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -127,15 +147,16 @@ def _load_contract(path: Path) -> dict[str, Any]:
         "evaluation",
         "thresholds",
         "evidence_policy",
+        "authentication_policy",
     }
     _exact_keys(value, required, "contract")
-    if value["schema_version"] != "1.0.0":
-        raise EvaluationContractError("contract.schema_version must equal '1.0.0'")
+    if value["schema_version"] != "2.0.0":
+        raise EvaluationContractError("contract.schema_version must equal '2.0.0'")
     if value["contract_id"] != "claude-ads-v2-canonical-model-gate":
         raise EvaluationContractError("unexpected contract.contract_id")
     schemas = _object(value["schemas"], "contract.schemas")
-    _exact_keys(schemas, {"external_run", "gate_report"}, "contract.schemas")
-    for field in ("external_run", "gate_report"):
+    _exact_keys(schemas, {"external_run", "gate_report", "trust_bundle"}, "contract.schemas")
+    for field in ("external_run", "gate_report", "trust_bundle"):
         schema = _object(schemas[field], f"contract.schemas.{field}")
         _exact_keys(schema, {"path", "sha256"}, f"contract.schemas.{field}")
         _string(schema["path"], f"contract.schemas.{field}.path")
@@ -165,11 +186,20 @@ def _load_contract(path: Path) -> dict[str, Any]:
     runtime = _object(value["runtime"], "contract.runtime")
     _exact_keys(
         runtime,
-        {"family", "fresh_process_per_case", "conversation_reuse", "mutation_authority"},
+        {
+            "family",
+            "skill_entrypoint",
+            "invocation_mode",
+            "fresh_process_per_case",
+            "conversation_reuse",
+            "mutation_authority",
+        },
         "contract.runtime",
     )
     if runtime != {
         "family": "claude-code",
+        "skill_entrypoint": "/claude-ads:ads",
+        "invocation_mode": "explicit-plugin-skill",
         "fresh_process_per_case": True,
         "conversation_reuse": False,
         "mutation_authority": "none",
@@ -222,6 +252,28 @@ def _load_contract(path: Path) -> dict[str, Any]:
         "local_checks_do_not_substitute_for_external_runs": True,
     }:
         raise EvaluationContractError("contract evidence policy is not fail-closed")
+    authentication = _object(value["authentication_policy"], "contract.authentication_policy")
+    _exact_keys(
+        authentication,
+        {
+            "algorithm",
+            "maximum_age_days",
+            "separate_runner_evaluator_keys",
+            "external_trust_bundle_env",
+            "implementation_principals_env",
+            "repository_trust_roots_allowed",
+        },
+        "contract.authentication_policy",
+    )
+    if authentication != {
+        "algorithm": "Ed25519",
+        "maximum_age_days": 14,
+        "separate_runner_evaluator_keys": True,
+        "external_trust_bundle_env": "CLAUDE_ADS_MODEL_EVAL_TRUST_BUNDLE_JSON",
+        "implementation_principals_env": "CLAUDE_ADS_MODEL_EVAL_IMPLEMENTATION_PRINCIPALS_JSON",
+        "repository_trust_roots_allowed": False,
+    }:
+        raise EvaluationContractError("contract authentication policy is not fail-closed")
     return dict(value)
 
 
@@ -334,6 +386,79 @@ def _validate_judgments(
     return [by_behavior[behavior] for behavior in expected]
 
 
+def _runner_binding(run: Mapping[str, Any]) -> dict[str, Any]:
+    execution = run["execution"]
+    runtime = run["runtime"]
+    subject = run["subject"]
+    case_receipts = [
+        {
+            "case_id": case["case_id"],
+            "invocation_id": case["invocation_id"],
+            "prompt_sha256": case["prompt_sha256"],
+            "response_sha256": case["response_sha256"],
+            "skill_invocation": case["skill_invocation"],
+        }
+        for case in run["cases"]
+    ]
+    return {
+        "contract_id": run["contract_id"],
+        "evidence_role": run["role"],
+        "run_id_sha256": _sha256_text(run["run_id"]),
+        "suite_sha256": run["suite"]["sha256"],
+        "subject": {
+            "git_commit": subject["git_commit"],
+            "git_tree": subject["git_tree"],
+            "artifact_sha256": subject["artifact_sha256"],
+        },
+        "runtime": dict(runtime),
+        "execution": {
+            "started_at": execution["started_at"],
+            "finished_at": execution["finished_at"],
+            "executor_identity": execution["executor_identity"],
+            "environment_id": execution["environment_id"],
+            "clean_checkout": execution["clean_checkout"],
+            "mutation_authority": execution["mutation_authority"],
+            "receipt_sha256": _sha256_text(execution["receipt"]),
+        },
+        "case_receipts_sha256": sha256_json(case_receipts),
+        "case_count": len(case_receipts),
+        "explicit_invocation_case_count": sum(
+            case["skill_invocation"]
+            == {"entrypoint": "/claude-ads:ads", "mode": "explicit-plugin-skill"}
+            for case in run["cases"]
+        ),
+    }
+
+
+def _evaluator_binding(run: Mapping[str, Any], result_summary: Mapping[str, Any]) -> dict[str, Any]:
+    evaluator = run["evaluator"]
+    judgments = [
+        {
+            "case_id": case["case_id"],
+            "response_sha256": case["response_sha256"],
+            "required_behavior_results": case["required_behavior_results"],
+            "forbidden_behavior_results": case["forbidden_behavior_results"],
+        }
+        for case in run["cases"]
+    ]
+    return {
+        "contract_id": run["contract_id"],
+        "evidence_role": run["role"],
+        "run_id_sha256": _sha256_text(run["run_id"]),
+        "runner_binding_sha256": sha256_json(_runner_binding(run)),
+        "rubric_id": evaluator["rubric_id"],
+        "evaluator": {
+            "kind": evaluator["kind"],
+            "identity": evaluator["identity"],
+            "independent_from_subject_run": evaluator["independent_from_subject_run"],
+            "evaluated_at": evaluator["evaluated_at"],
+            "receipt_sha256": _sha256_text(evaluator["receipt"]),
+        },
+        "judgments_sha256": sha256_json(judgments),
+        "result": dict(result_summary),
+    }
+
+
 def _validate_external_run(
     payload: Any,
     role: str,
@@ -341,6 +466,7 @@ def _validate_external_run(
     suite: Sequence[Mapping[str, Any]],
     expected_candidate_commit: str,
     expected_candidate_tree: str,
+    auth_context: tuple[Mapping[tuple[str, str], Mapping[str, Any]], set[str], datetime, str],
 ) -> dict[str, Any]:
     run = _object(payload, role)
     _exact_keys(
@@ -357,11 +483,12 @@ def _validate_external_run(
             "execution",
             "evaluator",
             "cases",
+            "authentication",
         },
         role,
     )
-    if run["schema_version"] != "1.0.0":
-        raise EvaluationContractError(f"{role}.schema_version must equal '1.0.0'")
+    if run["schema_version"] != "2.0.0":
+        raise EvaluationContractError(f"{role}.schema_version must equal '2.0.0'")
     if run["evidence_class"] != "external_model_run":
         raise EvaluationContractError(f"{role} is not external model-run evidence")
     if run["contract_id"] != contract["contract_id"]:
@@ -411,6 +538,8 @@ def _validate_external_run(
             "fresh_process_per_case",
             "conversation_reuse",
             "skill_loaded",
+            "skill_entrypoint",
+            "invocation_mode",
         },
         f"{role}.runtime",
     )
@@ -424,6 +553,11 @@ def _validate_external_run(
         raise EvaluationContractError(f"{role} reused conversation context")
     if runtime["skill_loaded"] is not True:
         raise EvaluationContractError(f"{role} did not load its subject skill")
+    if (
+        runtime["skill_entrypoint"] != contract["runtime"]["skill_entrypoint"]
+        or runtime["invocation_mode"] != contract["runtime"]["invocation_mode"]
+    ):
+        raise EvaluationContractError(f"{role} did not use the canonical explicit plugin entrypoint")
 
     execution = _object(run["execution"], f"{role}.execution")
     _exact_keys(
@@ -487,6 +621,7 @@ def _validate_external_run(
                 "prompt_sha256",
                 "response_sha256",
                 "response",
+                "skill_invocation",
                 "required_behavior_results",
                 "forbidden_behavior_results",
             },
@@ -499,6 +634,21 @@ def _validate_external_run(
         if invocation_id in invocation_ids:
             raise EvaluationContractError(f"{role} repeats invocation ID {invocation_id}")
         invocation_ids.add(invocation_id)
+        skill_invocation = _object(
+            case["skill_invocation"], f"{role}.cases[{index}].skill_invocation"
+        )
+        _exact_keys(
+            skill_invocation,
+            {"entrypoint", "mode"},
+            f"{role}.cases[{index}].skill_invocation",
+        )
+        if dict(skill_invocation) != {
+            "entrypoint": contract["runtime"]["skill_entrypoint"],
+            "mode": contract["runtime"]["invocation_mode"],
+        }:
+            raise EvaluationContractError(
+                f"{role} case {case_id} did not explicitly invoke /claude-ads:ads"
+            )
         by_id[case_id] = case
 
     expected_ids = {case["id"] for case in suite}
@@ -536,6 +686,62 @@ def _validate_external_run(
     passed_count = sum(result["passed"] for result in results.values())
     failed_ids = [case["id"] for case in suite if not results[case["id"]]["passed"]]
     p0_failures = sum(results[case_id]["risk"] == "P0" for case_id in failed_ids)
+    result_summary = {
+        "case_count": len(suite),
+        "passed": passed_count,
+        "failed": len(suite) - passed_count,
+        "score_percent": round(100 * passed_count / len(suite), 2),
+        "p0_failures": p0_failures,
+        "failed_case_ids": failed_ids,
+    }
+    authentication = _object(run["authentication"], f"{role}.authentication")
+    _exact_keys(authentication, {"runner", "evaluator"}, f"{role}.authentication")
+    runner_envelope = _object(authentication["runner"], f"{role}.authentication.runner")
+    evaluator_envelope = _object(authentication["evaluator"], f"{role}.authentication.evaluator")
+    expected_runner_binding = _runner_binding(run)
+    expected_evaluator_binding = _evaluator_binding(run, result_summary)
+    if runner_envelope.get("binding") != expected_runner_binding:
+        raise EvaluationContractError(f"{role} runner signature binding does not match the exact run")
+    if evaluator_envelope.get("binding") != expected_evaluator_binding:
+        raise EvaluationContractError(f"{role} evaluator signature binding does not match rubric/results")
+    trusted_keys, principals, now, trust_bundle_sha256 = auth_context
+    try:
+        verified_runner = verify_envelope(
+            runner_envelope,
+            expected_role="runner",
+            evidence_role=run["role"],
+            trusted_keys=trusted_keys,
+            implementation_principals=principals,
+            now=now,
+        )
+        verified_evaluator = verify_envelope(
+            evaluator_envelope,
+            expected_role="evaluator",
+            evidence_role=run["role"],
+            trusted_keys=trusted_keys,
+            implementation_principals=principals,
+            now=now,
+        )
+    except ModelEvidenceAuthError as exc:
+        raise EvaluationContractError(f"{role} authentication invalid: {exc}") from exc
+    if verified_runner["signer_id"] != execution["executor_identity"]:
+        raise EvaluationContractError(f"{role} runner signer does not match executor identity")
+    if verified_evaluator["signer_id"] != evaluator["identity"]:
+        raise EvaluationContractError(f"{role} evaluator signer does not match evaluator identity")
+    if (
+        verified_runner["signer_id"] == verified_evaluator["signer_id"]
+        or verified_runner["key_id"] == verified_evaluator["key_id"]
+    ):
+        raise EvaluationContractError(f"{role} runner and evaluator must use separate identities and keys")
+    runner_signed = _timestamp(verified_runner["signed_at"], f"{role}.runner.signed_at")
+    evaluator_signed = _timestamp(verified_evaluator["signed_at"], f"{role}.evaluator.signed_at")
+    if runner_signed < finished or evaluator_signed < evaluated_at or evaluator_signed < runner_signed:
+        raise EvaluationContractError(f"{role} authentication signatures are out of sequence")
+    authentication_summary = {
+        "trust_bundle_sha256": trust_bundle_sha256,
+        "runner": verified_runner,
+        "evaluator": verified_evaluator,
+    }
     return {
         "payload": dict(run),
         "results": results,
@@ -554,16 +760,15 @@ def _validate_external_run(
             "provider": runtime["provider"],
             "model_id": runtime["model_id"],
             "model_snapshot": runtime["model_snapshot"],
+            "skill_entrypoint": runtime["skill_entrypoint"],
+            "invocation_mode": runtime["invocation_mode"],
+            "explicit_invocation_case_count": len(suite),
             "fresh_process_per_case": runtime["fresh_process_per_case"],
             "conversation_reuse": runtime["conversation_reuse"],
             "mutation_authority": execution["mutation_authority"],
-            "case_count": len(suite),
-            "passed": passed_count,
-            "failed": len(suite) - passed_count,
-            "score_percent": round(100 * passed_count / len(suite), 2),
-            "p0_failures": p0_failures,
-            "failed_case_ids": failed_ids,
+            **result_summary,
             "receipt_sha256": _sha256_text(execution["receipt"]),
+            "authentication": authentication_summary,
         },
     }
 
@@ -582,6 +787,9 @@ def _missing_summary(role: str, status: str, error: str) -> dict[str, Any]:
         "provider": None,
         "model_id": None,
         "model_snapshot": None,
+        "skill_entrypoint": None,
+        "invocation_mode": None,
+        "explicit_invocation_case_count": None,
         "fresh_process_per_case": None,
         "conversation_reuse": None,
         "mutation_authority": None,
@@ -592,6 +800,7 @@ def _missing_summary(role: str, status: str, error: str) -> dict[str, Any]:
         "p0_failures": None,
         "failed_case_ids": [],
         "receipt_sha256": None,
+        "authentication": None,
         "error": f"{role}: {error}",
     }
 
@@ -621,7 +830,7 @@ def build_plan(contract_path: Path, root: Path) -> dict[str, Any]:
     _load_schemas(root, contract)
     suite = _load_suite(root, contract)
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "artifact_class": "external_model_execution_plan",
         "is_model_run_evidence": False,
         "contract_id": contract["contract_id"],
@@ -631,11 +840,15 @@ def build_plan(contract_path: Path, root: Path) -> dict[str, Any]:
         "subjects": contract["subjects"],
         "runtime_requirements": contract["runtime"],
         "evaluation_requirements": contract["evaluation"],
+        "authentication_requirements": contract["authentication_policy"],
         "instructions": [
             "Run every case in a fresh Claude Code process from a clean checkout of the exact subject.",
+            "Explicitly invoke /claude-ads:ads for every scenario on both subjects; do not rely on global natural skill selection.",
             "Disable mutation authority and do not reuse conversation state between cases.",
             "Retain raw responses privately; record their exact UTF-8 SHA-256 values.",
             "Use a separate human or model evaluator and the rubric text exactly as pinned here.",
+            "Have the external runner and evaluator sign exact bindings with separate externally trusted Ed25519 keys.",
+            "Provision trust and implementation-principal exclusions through environment JSON; repository-local trust roots are forbidden.",
             "Pass both private evidence files to assess; never treat this plan as run evidence.",
         ],
         "task_packets": [
@@ -647,6 +860,10 @@ def build_plan(contract_path: Path, root: Path) -> dict[str, Any]:
                 "risk": case["risk"],
                 "required_behaviors": case["required_behaviors"],
                 "forbidden_behaviors": case["forbidden_behaviors"],
+                "skill_invocation": {
+                    "entrypoint": contract["runtime"]["skill_entrypoint"],
+                    "mode": contract["runtime"]["invocation_mode"],
+                },
             }
             for case in suite
         ],
@@ -660,6 +877,10 @@ def assess(
     baseline_path: Path | None,
     expected_candidate_commit: str,
     expected_candidate_tree: str,
+    *,
+    trust_bundle_json: str | None = None,
+    implementation_principals_json: str | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Deterministically assess external runs; return a fail-closed report."""
     contract = _load_contract(contract_path)
@@ -702,6 +923,14 @@ def assess(
         try:
             payload = _read_json(path)
             evidence_hashes[role] = _sha256_file(path)
+            try:
+                auth_context = load_external_trust(
+                    trust_bundle_json=trust_bundle_json,
+                    implementation_principals_json=implementation_principals_json,
+                    now=now,
+                )
+            except ModelEvidenceAuthError as exc:
+                raise EvaluationContractError(f"external model-evidence trust invalid: {exc}") from exc
             result = _validate_external_run(
                 payload,
                 role,
@@ -709,6 +938,7 @@ def assess(
                 suite,
                 expected_candidate_commit,
                 expected_candidate_tree,
+                auth_context,
             )
         except EvaluationContractError as exc:
             error = str(exc)
@@ -810,7 +1040,7 @@ def assess(
     derived_at = max(times, key=lambda value: _timestamp(value, "derived_at")) if times else None
     blockers = list(dict.fromkeys(blockers))
     return {
-        "schema_version": "1.0.0",
+        "schema_version": "2.0.0",
         "evidence_class": "local_deterministic_assessment",
         "contract_id": contract["contract_id"],
         "derived_at": derived_at,
@@ -848,6 +1078,10 @@ def verify_release_report(
     root: Path,
     expected_candidate_commit: str,
     expected_candidate_tree: str,
+    *,
+    trust_bundle_json: str | None = None,
+    implementation_principals_json: str | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Validate a stored passing report against the current release subject.
 
@@ -858,6 +1092,15 @@ def verify_release_report(
     contract = _load_contract(contract_path)
     _load_schemas(root, contract)
     _load_suite(root, contract)
+    try:
+        auth_context = load_external_trust(
+            trust_bundle_json=trust_bundle_json,
+            implementation_principals_json=implementation_principals_json,
+            now=now,
+        )
+    except ModelEvidenceAuthError as exc:
+        raise EvaluationContractError(f"external model-evidence trust invalid: {exc}") from exc
+    trusted_keys, principals, current_time, trust_bundle_sha256 = auth_context
     report = _object(_read_json(report_path), "report")
     _exact_keys(
         report,
@@ -877,8 +1120,8 @@ def verify_release_report(
         },
         "report",
     )
-    if report["schema_version"] != "1.0.0":
-        raise EvaluationContractError("report.schema_version must equal '1.0.0'")
+    if report["schema_version"] != "2.0.0":
+        raise EvaluationContractError("report.schema_version must equal '2.0.0'")
     if report["evidence_class"] != "local_deterministic_assessment":
         raise EvaluationContractError("report has the wrong evidence class")
     if report["contract_id"] != contract["contract_id"]:
@@ -939,6 +1182,9 @@ def verify_release_report(
         "provider",
         "model_id",
         "model_snapshot",
+        "skill_entrypoint",
+        "invocation_mode",
+        "explicit_invocation_case_count",
         "fresh_process_per_case",
         "conversation_reuse",
         "mutation_authority",
@@ -949,6 +1195,7 @@ def verify_release_report(
         "p0_failures",
         "failed_case_ids",
         "receipt_sha256",
+        "authentication",
     }
     external = _object(report["external_runs"], "report.external_runs")
     _exact_keys(external, {"candidate", "retained_v1"}, "report.external_runs")
@@ -962,6 +1209,8 @@ def verify_release_report(
             summary["role"] != expected_role
             or summary["runtime"] != "claude-code"
             or summary["provider"] != "anthropic"
+            or summary["skill_entrypoint"] != contract["runtime"]["skill_entrypoint"]
+            or summary["invocation_mode"] != contract["runtime"]["invocation_mode"]
             or summary["fresh_process_per_case"] is not True
             or summary["conversation_reuse"] is not False
             or summary["mutation_authority"] != "none"
@@ -981,10 +1230,20 @@ def verify_release_report(
         for field in ("cli_version", "model_id", "model_snapshot"):
             _string(summary[field], f"report.external_runs.{key}.{field}")
         count = _integer(summary["case_count"], f"report.external_runs.{key}.case_count", minimum=1)
+        explicit_count = _integer(
+            summary["explicit_invocation_case_count"],
+            f"report.external_runs.{key}.explicit_invocation_case_count",
+            minimum=1,
+        )
         passed = _integer(summary["passed"], f"report.external_runs.{key}.passed")
         failed = _integer(summary["failed"], f"report.external_runs.{key}.failed")
         p0 = _integer(summary["p0_failures"], f"report.external_runs.{key}.p0_failures")
-        if count != contract["suite"]["case_count"] or passed + failed != count or p0 > failed:
+        if (
+            count != contract["suite"]["case_count"]
+            or explicit_count != count
+            or passed + failed != count
+            or p0 > failed
+        ):
             raise EvaluationContractError(f"report external run {key} counts are inconsistent")
         score = summary["score_percent"]
         if isinstance(score, bool) or not isinstance(score, (int, float)):
@@ -994,6 +1253,114 @@ def verify_release_report(
         failed_ids = _array(summary["failed_case_ids"], f"report.external_runs.{key}.failed_case_ids")
         if len(failed_ids) != failed or len(set(failed_ids)) != len(failed_ids):
             raise EvaluationContractError(f"report external run {key} failed IDs are inconsistent")
+        authentication = _object(summary["authentication"], f"report.external_runs.{key}.authentication")
+        _exact_keys(
+            authentication,
+            {"trust_bundle_sha256", "runner", "evaluator"},
+            f"report.external_runs.{key}.authentication",
+        )
+        if authentication["trust_bundle_sha256"] != trust_bundle_sha256:
+            raise EvaluationContractError(f"report external run {key} uses a different trust bundle")
+        evidence_role = expected_role
+        try:
+            runner_auth = verify_envelope(
+                authentication["runner"],
+                expected_role="runner",
+                evidence_role=evidence_role,
+                trusted_keys=trusted_keys,
+                implementation_principals=principals,
+                now=current_time,
+            )
+            evaluator_auth = verify_envelope(
+                authentication["evaluator"],
+                expected_role="evaluator",
+                evidence_role=evidence_role,
+                trusted_keys=trusted_keys,
+                implementation_principals=principals,
+                now=current_time,
+            )
+        except ModelEvidenceAuthError as exc:
+            raise EvaluationContractError(f"report external run {key} authentication invalid: {exc}") from exc
+        if runner_auth["signer_id"] == evaluator_auth["signer_id"] or runner_auth["key_id"] == evaluator_auth["key_id"]:
+            raise EvaluationContractError(f"report external run {key} reuses runner/evaluator identity or key")
+        runner_binding = _object(runner_auth["binding"], f"report.external_runs.{key}.runner.binding")
+        evaluator_binding = _object(evaluator_auth["binding"], f"report.external_runs.{key}.evaluator.binding")
+        if (
+            runner_binding.get("contract_id") != contract["contract_id"]
+            or runner_binding.get("evidence_role") != evidence_role
+            or runner_binding.get("run_id_sha256") != summary["run_id_sha256"]
+            or runner_binding.get("suite_sha256") != contract["suite"]["sha256"]
+            or runner_binding.get("subject")
+            != {
+                "git_commit": summary["git_commit"],
+                "git_tree": summary["git_tree"],
+                "artifact_sha256": summary["artifact_sha256"],
+            }
+        ):
+            raise EvaluationContractError(f"report external run {key} runner binding disagrees with summary")
+        if (
+            runner_binding.get("case_count") != count
+            or runner_binding.get("explicit_invocation_case_count") != count
+        ):
+            raise EvaluationContractError(
+                f"report external run {key} does not bind explicit invocation for every case"
+            )
+        bound_runtime = _object(runner_binding.get("runtime"), f"report.external_runs.{key}.runner.runtime")
+        for runtime_field in (
+            "family",
+            "cli_version",
+            "provider",
+            "model_id",
+            "model_snapshot",
+            "skill_entrypoint",
+            "invocation_mode",
+            "fresh_process_per_case",
+            "conversation_reuse",
+        ):
+            summary_field = "runtime" if runtime_field == "family" else runtime_field
+            if bound_runtime.get(runtime_field) != summary[summary_field]:
+                raise EvaluationContractError(f"report external run {key} signed runtime disagrees on {runtime_field}")
+        if bound_runtime.get("skill_loaded") is not True:
+            raise EvaluationContractError(f"report external run {key} did not sign a loaded skill")
+        bound_execution = _object(runner_binding.get("execution"), f"report.external_runs.{key}.runner.execution")
+        if (
+            bound_execution.get("mutation_authority") != summary["mutation_authority"]
+            or bound_execution.get("receipt_sha256") != summary["receipt_sha256"]
+            or bound_execution.get("executor_identity") != runner_auth["signer_id"]
+            or bound_execution.get("clean_checkout") is not True
+        ):
+            raise EvaluationContractError(f"report external run {key} signed execution disagrees with summary")
+        bound_result = {
+            "case_count": summary["case_count"],
+            "passed": summary["passed"],
+            "failed": summary["failed"],
+            "score_percent": summary["score_percent"],
+            "p0_failures": summary["p0_failures"],
+            "failed_case_ids": summary["failed_case_ids"],
+        }
+        if (
+            evaluator_binding.get("contract_id") != contract["contract_id"]
+            or evaluator_binding.get("evidence_role") != evidence_role
+            or evaluator_binding.get("run_id_sha256") != summary["run_id_sha256"]
+            or evaluator_binding.get("runner_binding_sha256") != sha256_json(runner_binding)
+            or evaluator_binding.get("rubric_id") != contract["evaluation"]["rubric_id"]
+            or evaluator_binding.get("result") != bound_result
+        ):
+            raise EvaluationContractError(f"report external run {key} evaluator binding disagrees with summary")
+        bound_evaluator = _object(evaluator_binding.get("evaluator"), f"report.external_runs.{key}.evaluator.identity")
+        if (
+            bound_evaluator.get("identity") != evaluator_auth["signer_id"]
+            or bound_evaluator.get("identity") == bound_execution.get("executor_identity")
+            or bound_evaluator.get("kind") not in contract["evaluation"]["accepted_evaluator_kinds"]
+            or bound_evaluator.get("independent_from_subject_run") is not True
+        ):
+            raise EvaluationContractError(f"report external run {key} evaluator signer identity disagrees")
+        finished_at = _timestamp(bound_execution.get("finished_at"), f"report.external_runs.{key}.execution.finished_at")
+        evaluated_at = _timestamp(bound_evaluator.get("evaluated_at"), f"report.external_runs.{key}.evaluator.evaluated_at")
+        runner_signed_at = _timestamp(runner_auth["signed_at"], f"report.external_runs.{key}.runner.signed_at")
+        evaluator_signed_at = _timestamp(evaluator_auth["signed_at"], f"report.external_runs.{key}.evaluator.signed_at")
+        if not finished_at <= runner_signed_at <= evaluator_signed_at or not finished_at <= evaluated_at <= evaluator_signed_at:
+            raise EvaluationContractError(f"report external run {key} signed chronology is invalid")
         summaries[key] = summary
 
     if summaries["candidate"]["artifact_sha256"] == summaries["retained_v1"]["artifact_sha256"]:
@@ -1109,6 +1476,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         suite = _load_suite(args.root, contract)
         if args.command == "validate-run":
             payload = _read_json(args.evidence)
+            try:
+                auth_context = load_external_trust()
+            except ModelEvidenceAuthError as exc:
+                raise EvaluationContractError(f"external model-evidence trust invalid: {exc}") from exc
             result = _validate_external_run(
                 payload,
                 args.role,
@@ -1116,6 +1487,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 suite,
                 expected_commit,
                 expected_tree,
+                auth_context,
             )
             summary = result["summary"]
             summary["input_sha256"] = _sha256_file(args.evidence)

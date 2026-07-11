@@ -9,6 +9,29 @@ from claude_ads_core.contracts import CONTRACT_NAMES, ContractError, schema_path
 from claude_ads_core.models import AccountSnapshot, ControlDefinition, Finding, ReportBundle, RunManifest
 
 
+def data_lifecycle(classification: str = "confidential") -> dict:
+    return {
+        "schema_version": "1.0.0",
+        "lifecycle_id": "test-lifecycle",
+        "classification": classification,
+        "retention": {
+            "minimum_seconds": 0,
+            "mode": "operator-defined",
+            "delete_after": "2026-07-12T16:00:00Z" if classification != "public" else None,
+            "purpose": "Complete and verify the sanitized test run",
+            "exception_reason": None,
+        },
+        "encryption": {
+            "at_rest": "verified" if classification != "public" else "not-applicable",
+            "in_transit": "verified" if classification != "public" else "not-applicable",
+            "evidence_refs": ["operator-attestation:test-encryption"] if classification != "public" else [],
+        },
+        "access": {"owner": "test-owner", "authorized_roles": ["test-operator"], "access_log_locator": None},
+        "deletion": {"status": "scheduled", "method": "Operator-defined deletion", "verification_required": True, "verification_artifact_locator": None},
+        "incident": {"owner": "test-owner", "reporting_channel": "Private security channel", "status": "not-triggered", "record_locator": None},
+    }
+
+
 def account_snapshot() -> dict:
     return {
         "schema_version": "1.0.0",
@@ -32,6 +55,7 @@ def run_manifest() -> dict:
         "adapters": [{"platform": "google", "mode": "export"}],
         "sources": ["export.csv"],
         "privacy_class": "confidential",
+        "data_lifecycle": data_lifecycle(),
         "worker_status": {"google": "completed"},
         "completeness": "complete",
     }
@@ -132,6 +156,13 @@ def test_manifest_requires_timezone_aware_started_at():
     payload = run_manifest()
     payload["started_at"] = "2026-07-11T16:00:00"
     with pytest.raises(ContractError, match="UTC offset"):
+        validate_contract("run-manifest", payload)
+
+
+def test_manifest_requires_matching_data_lifecycle_classification():
+    payload = run_manifest()
+    payload["data_lifecycle"]["classification"] = "internal"
+    with pytest.raises(ContractError, match="must match"):
         validate_contract("run-manifest", payload)
 
 

@@ -1041,6 +1041,8 @@ def evaluate_release_gate(
     github_run_id: str | None,
     trust_bundle_json: str | None = None,
     implementation_principals_json: str | None = None,
+    model_trust_bundle_json: str | None = None,
+    model_implementation_principals_json: str | None = None,
 ) -> dict[str, object]:
     """Evaluate every locally and externally verifiable release gate."""
     commit_sha = _git(root, "rev-parse", "HEAD").decode("ascii").strip()
@@ -1088,6 +1090,8 @@ def evaluate_release_gate(
             root,
             commit_sha,
             tree_sha,
+            trust_bundle_json=model_trust_bundle_json,
+            implementation_principals_json=model_implementation_principals_json,
         )
 
     check("canonical-model-evaluation", model_evidence)
@@ -1184,6 +1188,16 @@ def main(argv: list[str] | None = None) -> int:
                     else None
                 ),
                 github_run_id=args.github_run_id,
+                trust_bundle_json=os.environ.get("CLAUDE_ADS_REVIEW_TRUST_KEYS_JSON"),
+                implementation_principals_json=os.environ.get(
+                    "CLAUDE_ADS_IMPLEMENTATION_PRINCIPALS_JSON"
+                ),
+                model_trust_bundle_json=os.environ.get(
+                    "CLAUDE_ADS_MODEL_EVAL_TRUST_BUNDLE_JSON"
+                ),
+                model_implementation_principals_json=os.environ.get(
+                    "CLAUDE_ADS_MODEL_EVAL_IMPLEMENTATION_PRINCIPALS_JSON"
+                ),
             )
             rendered = _json_bytes(report).decode("utf-8")
             if args.output:

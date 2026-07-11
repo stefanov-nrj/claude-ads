@@ -38,7 +38,7 @@ def test_all_workflow_fixtures_validate_and_have_strict_schemas(workflow_fixture
 @pytest.mark.parametrize(
     "fixture_name",
     [
-        "setup-profile", "brand-profile", "media-plan", "creative-brief",
+        "data-lifecycle", "setup-profile", "brand-profile", "media-plan", "creative-brief",
         "generation-manifest", "monitoring-bundle", "experiment-setup",
         "experiment-readout", "mutation-plan", "orchestration-run",
         "orchestration-task", "orchestration-result", "orchestration-gate",
@@ -92,6 +92,18 @@ def test_monitoring_bundle_cannot_hide_missing_inputs(workflow_fixtures):
     bundle["completeness"] = "complete"
     with pytest.raises(ContractError, match="cannot be complete"):
         validate_contract("monitoring-bundle", bundle)
+
+
+def test_non_public_lifecycle_requires_encryption_and_deletion_deadline(workflow_fixtures):
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["encryption"]["at_rest"] = "not-applicable"
+    with pytest.raises(ContractError, match="verified at-rest and in-transit"):
+        validate_contract("data-lifecycle", lifecycle)
+
+    lifecycle = copy.deepcopy(workflow_fixtures["data-lifecycle"])
+    lifecycle["retention"]["delete_after"] = None
+    with pytest.raises(ContractError, match="delete_after is required"):
+        validate_contract("data-lifecycle", lifecycle)
 
 
 def test_store_is_append_only_and_result_reruns_require_supersedes(tmp_path, workflow_fixtures):

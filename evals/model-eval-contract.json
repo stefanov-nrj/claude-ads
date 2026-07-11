@@ -1,14 +1,18 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "2.0.0",
   "contract_id": "claude-ads-v2-canonical-model-gate",
   "schemas": {
     "external_run": {
-      "path": "evals/schemas/model-run-evidence.v1.schema.json",
-      "sha256": "e5a1c1412f6a7d36f5561ab4746742a62178eadda862d4e9aff85bdbbcb6fb5b"
+      "path": "evals/schemas/model-run-evidence.v2.schema.json",
+      "sha256": "45e77f5be60b821da130e0056cf6608ed6250b6a4e19144a76b1fca93fcd52c2"
     },
     "gate_report": {
-      "path": "evals/schemas/model-gate-report.v1.schema.json",
-      "sha256": "414fab2094a78fbbfd790b460c8a72d4223c08358b83b9e37140289ea4998100"
+      "path": "evals/schemas/model-gate-report.v2.schema.json",
+      "sha256": "1bea22a526ec571e5ffb9ef81ce76eb61ba20b414cf677472c4d63fa3fbb96a2"
+    },
+    "trust_bundle": {
+      "path": "evals/schemas/model-eval-trust-bundle.v1.schema.json",
+      "sha256": "35b4ecc6cbac3b80f2deccba178e2b3511cb9bb75b805b32ceb1dc8eceaa97ca"
     }
   },
   "suite": {
@@ -33,6 +37,8 @@
   },
   "runtime": {
     "family": "claude-code",
+    "skill_entrypoint": "/claude-ads:ads",
+    "invocation_mode": "explicit-plugin-skill",
     "fresh_process_per_case": true,
     "conversation_reuse": false,
     "mutation_authority": "none"
@@ -55,5 +61,13 @@
     "raw_responses_required_for_assessment": true,
     "raw_responses_must_not_be_packaged": true,
     "local_checks_do_not_substitute_for_external_runs": true
+  },
+  "authentication_policy": {
+    "algorithm": "Ed25519",
+    "maximum_age_days": 14,
+    "separate_runner_evaluator_keys": true,
+    "external_trust_bundle_env": "CLAUDE_ADS_MODEL_EVAL_TRUST_BUNDLE_JSON",
+    "implementation_principals_env": "CLAUDE_ADS_MODEL_EVAL_IMPLEMENTATION_PRINCIPALS_JSON",
+    "repository_trust_roots_allowed": false
   }
 }

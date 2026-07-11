@@ -21,6 +21,7 @@ PLATFORMS = {
 PRIVACY_CLASSES = {"public", "internal", "confidential", "restricted"}
 ARTIFACT_STATUSES = {"draft", "complete", "partial", "failed"}
 WORKFLOW_CONTRACT_NAMES = (
+    "data-lifecycle",
     "setup-profile",
     "brand-profile",
     "media-plan",
@@ -159,14 +160,84 @@ def _platforms(value: Any, path: str, *, minimum: int = 1) -> list[str]:
     return values
 
 
+def _validate_data_lifecycle_at(value: Any, path: str) -> Mapping[str, Any]:
+    required = (
+        "schema_version", "lifecycle_id", "classification", "retention",
+        "encryption", "access", "deletion", "incident",
+    )
+    doc = _exact(value, path, required)
+    if doc["schema_version"] != SCHEMA_VERSION:
+        raise WorkflowContractError(f"{path}.schema_version must equal {SCHEMA_VERSION!r}")
+    _id(doc["lifecycle_id"], f"{path}.lifecycle_id")
+    classification = _enum(doc["classification"], f"{path}.classification", PRIVACY_CLASSES)
+
+    retention = _exact(
+        doc["retention"], f"{path}.retention",
+        ("minimum_seconds", "mode", "delete_after", "purpose", "exception_reason"),
+    )
+    _number(retention["minimum_seconds"], f"{path}.retention.minimum_seconds", minimum=0)
+    mode = _enum(retention["mode"], f"{path}.retention.mode", {"ephemeral", "operator-defined", "policy-defined", "exception"})
+    delete_after = retention["delete_after"]
+    if delete_after is not None:
+        _datetime(delete_after, f"{path}.retention.delete_after")
+    _string(retention["purpose"], f"{path}.retention.purpose")
+    exception_reason = _nullable_string(retention["exception_reason"], f"{path}.retention.exception_reason")
+    if classification != "public" and mode != "exception" and delete_after is None:
+        raise WorkflowContractError(f"{path}.retention.delete_after is required for non-public data")
+    if mode == "exception" and not exception_reason:
+        raise WorkflowContractError(f"{path}.retention.exception_reason is required for an exception")
+
+    encryption = _exact(doc["encryption"], f"{path}.encryption", ("at_rest", "in_transit", "evidence_refs"))
+    at_rest = _enum(encryption["at_rest"], f"{path}.encryption.at_rest", {"verified", "not-applicable"})
+    in_transit = _enum(encryption["in_transit"], f"{path}.encryption.in_transit", {"verified", "not-applicable"})
+    encryption_evidence = _strings(encryption["evidence_refs"], f"{path}.encryption.evidence_refs")
+    if classification != "public" and (at_rest != "verified" or in_transit != "verified" or not encryption_evidence):
+        raise WorkflowContractError(f"{path}.encryption requires verified at-rest and in-transit controls with evidence for non-public data")
+
+    access = _exact(doc["access"], f"{path}.access", ("owner", "authorized_roles", "access_log_locator"))
+    _string(access["owner"], f"{path}.access.owner")
+    _strings(access["authorized_roles"], f"{path}.access.authorized_roles", minimum=1)
+    if access["access_log_locator"] is not None:
+        _relative_path(access["access_log_locator"], f"{path}.access.access_log_locator")
+
+    deletion = _exact(
+        doc["deletion"], f"{path}.deletion",
+        ("status", "method", "verification_required", "verification_artifact_locator"),
+    )
+    deletion_status = _enum(deletion["status"], f"{path}.deletion.status", {"scheduled", "verified", "exception"})
+    _string(deletion["method"], f"{path}.deletion.method")
+    if not _bool(deletion["verification_required"], f"{path}.deletion.verification_required"):
+        raise WorkflowContractError(f"{path}.deletion.verification_required must be true")
+    locator = deletion["verification_artifact_locator"]
+    if locator is not None:
+        _relative_path(locator, f"{path}.deletion.verification_artifact_locator")
+    if deletion_status == "verified" and locator is None:
+        raise WorkflowContractError(f"{path}.deletion.verified status requires a verification artifact")
+
+    incident = _exact(doc["incident"], f"{path}.incident", ("owner", "reporting_channel", "status", "record_locator"))
+    _string(incident["owner"], f"{path}.incident.owner")
+    _string(incident["reporting_channel"], f"{path}.incident.reporting_channel")
+    incident_status = _enum(incident["status"], f"{path}.incident.status", {"not-triggered", "open", "contained", "resolved"})
+    if incident["record_locator"] is not None:
+        _relative_path(incident["record_locator"], f"{path}.incident.record_locator")
+    if incident_status != "not-triggered" and incident["record_locator"] is None:
+        raise WorkflowContractError(f"{path}.incident.record_locator is required after an incident is triggered")
+    return doc
+
+
+def _validate_data_lifecycle(payload: Mapping[str, Any]) -> None:
+    _validate_data_lifecycle_at(payload, "$")
+
+
 def _validate_setup(payload: Mapping[str, Any]) -> None:
     required = (
         "schema_version", "artifact_type", "run_id", "created_at", "business",
         "objective", "platforms", "account_refs", "data_sources", "privacy_class",
-        "mutation_authority", "approver_ids", "assumptions",
+        "mutation_authority", "approver_ids", "assumptions", "data_lifecycle",
     )
     doc = _exact(payload, "$", required)
     _base(doc, "setup-profile")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     business = _exact(doc["business"], "$.business", ("name", "business_model", "geographies", "regulated_categories"))
     _string(business["name"], "$.business.name")
     _string(business["business_model"], "$.business.business_model")
@@ -193,6 +264,8 @@ def _validate_setup(payload: Mapping[str, Any]) -> None:
             _enum(source["platform"], f"$.data_sources[{index}].platform", PLATFORMS)
         _enum(source["status"], f"$.data_sources[{index}].status", {"available", "missing", "unverified"})
     _enum(doc["privacy_class"], "$.privacy_class", PRIVACY_CLASSES)
+    if doc["privacy_class"] != doc["data_lifecycle"]["classification"]:
+        raise WorkflowContractError("$.privacy_class must match $.data_lifecycle.classification")
     authority = _enum(doc["mutation_authority"], "$.mutation_authority", {"none", "draft-only", "approved-plan-required"})
     approvers = _strings(doc["approver_ids"], "$.approver_ids")
     if authority == "approved-plan-required" and not approvers:
@@ -205,9 +278,11 @@ def _validate_brand(payload: Mapping[str, Any]) -> None:
         "schema_version", "artifact_type", "run_id", "created_at", "brand_name",
         "website_url", "observations", "inferences", "source_ids",
         "source_assets_authorized", "missing_fields", "status",
+        "data_lifecycle",
     )
     doc = _exact(payload, "$", required)
     _base(doc, "brand-profile")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     _string(doc["brand_name"], "$.brand_name")
     url = _nullable_string(doc["website_url"], "$.website_url")
     if url:
@@ -234,9 +309,10 @@ def _validate_brand(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_media_plan(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "objective", "currency", "channels", "actions", "assumptions", "exclusions", "status")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "objective", "currency", "channels", "actions", "assumptions", "exclusions", "status", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "media-plan")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     _string(doc["objective"], "$.objective")
     _string(doc["currency"], "$.currency", pattern=r"[A-Z]{3}")
     for index, item in enumerate(_list(doc["channels"], "$.channels", minimum=1)):
@@ -265,9 +341,10 @@ def _validate_media_plan(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_creative(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "objective", "audience", "offer", "approved_claims", "hypotheses", "copy_deck", "specification_source_ids", "human_review", "status")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "objective", "audience", "offer", "approved_claims", "hypotheses", "copy_deck", "specification_source_ids", "human_review", "status", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "creative-brief")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     for field in ("objective", "audience", "offer"):
         _string(doc[field], f"$.{field}")
     for index, item in enumerate(_list(doc["approved_claims"], "$.approved_claims")):
@@ -306,9 +383,10 @@ def _validate_creative(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_generation(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "provider", "inputs", "outputs", "failures", "human_review", "status")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "provider", "inputs", "outputs", "failures", "human_review", "status", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "generation-manifest")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     provider = _exact(doc["provider"], "$.provider", ("id", "model", "capability_evidence"))
     _string(provider["id"], "$.provider.id")
     _string(provider["model"], "$.provider.model")
@@ -322,7 +400,7 @@ def _validate_generation(payload: Mapping[str, Any]) -> None:
         _sha256(asset["sha256"], f"$.inputs.source_assets[{index}].sha256")
         _bool(asset["rights_confirmed"], f"$.inputs.source_assets[{index}].rights_confirmed")
     for index, item in enumerate(_list(doc["outputs"], "$.outputs")):
-        output = _exact(item, f"$.outputs[{index}]", ("asset_id", "path", "sha256", "media_type", "width", "height", "prompt_version", "status", "cost"))
+        output = _exact(item, f"$.outputs[{index}]", ("asset_id", "path", "sha256", "media_type", "width", "height", "prompt_version", "prompt_sha256", "prompt_summary", "status", "cost"))
         _id(output["asset_id"], f"$.outputs[{index}].asset_id")
         _relative_path(output["path"], f"$.outputs[{index}].path")
         _sha256(output["sha256"], f"$.outputs[{index}].sha256")
@@ -330,6 +408,9 @@ def _validate_generation(payload: Mapping[str, Any]) -> None:
         _number(output["width"], f"$.outputs[{index}].width", minimum=1)
         _number(output["height"], f"$.outputs[{index}].height", minimum=1)
         _string(output["prompt_version"], f"$.outputs[{index}].prompt_version")
+        _sha256(output["prompt_sha256"], f"$.outputs[{index}].prompt_sha256")
+        if output["prompt_summary"] != "[redacted: raw prompt is ephemeral and is not persisted]":
+            raise WorkflowContractError(f"$.outputs[{index}].prompt_summary must use the canonical redaction marker")
         _enum(output["status"], f"$.outputs[{index}].status", {"generated", "validated", "rejected"})
         if output["cost"] is not None:
             cost = _exact(output["cost"], f"$.outputs[{index}].cost", ("currency", "amount"))
@@ -351,9 +432,10 @@ def _relative_path(value: Any, path: str) -> str:
 
 
 def _validate_monitoring(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "window", "checkpoints", "missing_inputs", "contradictions", "completeness")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "window", "checkpoints", "missing_inputs", "contradictions", "completeness", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "monitoring-bundle")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     window = _exact(doc["window"], "$.window", ("start", "end", "timezone"))
     start = _date(window["start"], "$.window.start")
     end = _date(window["end"], "$.window.end")
@@ -380,9 +462,10 @@ def _validate_monitoring(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_experiment(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "experiment_id", "stage", "design", "result", "decision", "status")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "experiment_id", "stage", "design", "result", "decision", "status", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "experiment-artifact")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     _id(doc["experiment_id"], "$.experiment_id")
     stage = _enum(doc["stage"], "$.stage", {"setup", "readout"})
     design = _exact(doc["design"], "$.design", ("decision", "hypothesis", "treatment", "control", "randomization_unit", "population", "primary_metric", "guardrails", "minimum_effect", "stopping_rule", "exclusions"))
@@ -405,9 +488,10 @@ def _validate_experiment(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_mutation(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "plan_id", "platform", "account_id", "object_id", "operation", "before", "after", "reason", "blast_radius", "ceilings", "approval", "idempotency_key", "audit_destination", "verification_steps", "rollback", "remote_precondition_sha256", "status")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "plan_id", "platform", "account_id", "object_id", "operation", "before", "after", "reason", "blast_radius", "ceilings", "approval", "idempotency_key", "audit_destination", "verification_steps", "rollback", "remote_precondition_sha256", "status", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "mutation-plan")
+    _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     _id(doc["plan_id"], "$.plan_id")
     _enum(doc["platform"], "$.platform", PLATFORMS)
     _string(doc["account_id"], "$.account_id")
@@ -446,13 +530,16 @@ def _validate_mutation(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_orchestration_run(payload: Mapping[str, Any]) -> None:
-    required = ("schema_version", "artifact_type", "run_id", "created_at", "objective", "scopes", "phases", "privacy_class", "mutation_authority", "status")
+    required = ("schema_version", "artifact_type", "run_id", "created_at", "objective", "scopes", "phases", "privacy_class", "mutation_authority", "status", "data_lifecycle")
     doc = _exact(payload, "$", required)
     _base(doc, "orchestration-run")
+    lifecycle = _validate_data_lifecycle_at(doc["data_lifecycle"], "$.data_lifecycle")
     _string(doc["objective"], "$.objective")
     _strings(doc["scopes"], "$.scopes", minimum=1)
     _strings(doc["phases"], "$.phases", minimum=1)
     _enum(doc["privacy_class"], "$.privacy_class", PRIVACY_CLASSES)
+    if doc["privacy_class"] != lifecycle["classification"]:
+        raise WorkflowContractError("$.privacy_class must match $.data_lifecycle.classification")
     _enum(doc["mutation_authority"], "$.mutation_authority", {"none", "repository-only", "draft-external", "approved-external"})
     _enum(doc["status"], "$.status", {"open"})
 
@@ -544,6 +631,7 @@ def _validate_orchestration_gate(payload: Mapping[str, Any]) -> None:
 
 
 WORKFLOW_VALIDATORS: dict[str, Callable[[Mapping[str, Any]], None]] = {
+    "data-lifecycle": _validate_data_lifecycle,
     "setup-profile": _validate_setup,
     "brand-profile": _validate_brand,
     "media-plan": _validate_media_plan,

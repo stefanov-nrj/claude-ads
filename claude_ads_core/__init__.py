@@ -20,6 +20,7 @@ from .orchestration import (
 from .workflow_models import (
     BrandProfile,
     CreativeBrief,
+    DataLifecycle,
     ExperimentArtifact,
     GenerationManifest,
     MediaPlan,
@@ -71,6 +72,7 @@ __all__ = [
     "GenerationManifest",
     "ExperimentArtifact",
     "CreativeBrief",
+    "DataLifecycle",
     "BrandProfile",
     "SetupProfile",
     "OrchestrationError",

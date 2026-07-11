@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/AI-Marketing-Hub/claude-ads/evals/schemas/model-gate-report.v1.json",
+  "$id": "https://github.com/AI-Marketing-Hub/claude-ads/evals/schemas/model-gate-report.v2.json",
   "title": "Claude Ads canonical model evaluation gate report",
   "type": "object",
   "additionalProperties": false,
@@ -19,7 +19,7 @@
     "blockers"
   ],
   "properties": {
-    "schema_version": {"const": "1.0.0"},
+    "schema_version": {"const": "2.0.0"},
     "evidence_class": {"const": "local_deterministic_assessment"},
     "contract_id": {"const": "claude-ads-v2-canonical-model-gate"},
     "derived_at": {"type": ["string", "null"], "format": "date-time"},
@@ -128,6 +128,9 @@
         "provider",
         "model_id",
         "model_snapshot",
+        "skill_entrypoint",
+        "invocation_mode",
+        "explicit_invocation_case_count",
         "fresh_process_per_case",
         "conversation_reuse",
         "mutation_authority",
@@ -137,7 +140,8 @@
         "score_percent",
         "p0_failures",
         "failed_case_ids",
-        "receipt_sha256"
+        "receipt_sha256",
+        "authentication"
       ],
       "properties": {
         "status": {"enum": ["verified", "missing", "invalid"]},
@@ -152,6 +156,9 @@
         "provider": {"type": ["string", "null"]},
         "model_id": {"type": ["string", "null"]},
         "model_snapshot": {"type": ["string", "null"]},
+        "skill_entrypoint": {"type": ["string", "null"], "enum": ["/claude-ads:ads", null]},
+        "invocation_mode": {"type": ["string", "null"], "enum": ["explicit-plugin-skill", null]},
+        "explicit_invocation_case_count": {"type": ["integer", "null"], "minimum": 0},
         "fresh_process_per_case": {"type": ["boolean", "null"]},
         "conversation_reuse": {"type": ["boolean", "null"]},
         "mutation_authority": {"type": ["string", "null"]},
@@ -162,6 +169,7 @@
         "p0_failures": {"type": ["integer", "null"], "minimum": 0},
         "failed_case_ids": {"type": "array", "items": {"type": "string"}},
         "receipt_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "authentication": {"type": ["object", "null"]},
         "error": {"type": "string"}
       }
     }

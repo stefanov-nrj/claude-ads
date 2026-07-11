@@ -76,4 +76,22 @@ configure and test the named network boundary independently.
 Screenshots and their receipts are confidential. They use same-directory atomic
 replacement, receive mode `0600` where POSIX permissions are available, omit the
 URL path and query from the receipt, and must not be committed, attached to public
-issues, or included in release packages.
+issues, or included in release packages. Capture requires a validated confidential
+`data-lifecycle` contract; receipts contain its lifecycle fields and only
+repository/run-relative artifact locators.
+
+## Data lifecycle
+
+Every persisted run and workflow artifact declares the versioned contract in
+`claude_ads_core/schemas/v1/data-lifecycle.schema.json`. The product policy is
+`control-plane/manifests/data-lifecycle-policy.json`. It records classification,
+an explicit zero-second product minimum plus an operator-defined purpose-bound
+deadline or exception, verified encryption evidence for non-public data, least-
+privilege roles, deletion and independent verification, and private incident
+handling. These are operational safeguards, not legal retention requirements or
+claims of compliance.
+
+Creative-generation JSON stores prompt SHA-256 values and the canonical redacted
+summary only. Screenshot and generation JSON store relative locators only. Raw
+prompts, private provider payloads, and resolved local paths remain outside shipped
+artifacts and should be handled through approved ephemeral/private evidence channels.

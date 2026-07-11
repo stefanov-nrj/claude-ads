@@ -1,28 +1,21 @@
 #!/usr/bin/env python3
-"""
-DEPRECATED: Use banana-claude MCP tools instead. This script is a fallback
-for environments where banana-claude is not installed.
+"""Generate ad creative images through an explicitly selected API adapter.
 
-Preferred method: Install banana-claude and use `/banana generate` or
-the nanobanana-mcp tools (gemini_generate_image, set_aspect_ratio).
-See: https://github.com/AgriciDaniel/claude-banana
+This local CLI is a fallback for environments whose approved image capability is
+not exposed through a host-native tool. It has no default provider or model.
+Select both from current capability evidence for every run.
 
-Generate ad creative images using a pluggable image generation API.
-
-Supports Gemini (default), OpenAI, Stability AI, and Replicate.
-Set ADS_IMAGE_PROVIDER env var to choose a provider.
-Set the appropriate API key env var for the chosen provider.
+Implemented adapters are Gemini, OpenAI, Stability AI, and Replicate. Adapter
+availability does not imply operator approval, account access, model availability,
+or fitness for a placement.
 
 Usage:
-    python generate_image.py "prompt text" --ratio 9:16 --output ad.png
-    python generate_image.py "prompt text" --ratio 16:9 --provider gemini --json
-    python generate_image.py "prompt text" --size 1200x628 --output landscape.png
-    python generate_image.py --batch prompts.json --output-dir ./ad-assets/
-    python generate_image.py --model gemini-3.1-flash-image-preview "prompt" --ratio 1:1
-    python generate_image.py "prompt" --ratio 4:5 --reference-image ./brand-screenshots/homepage_desktop.png
+    python generate_image.py "prompt text" --provider "$ADS_IMAGE_PROVIDER" --model "$ADS_IMAGE_MODEL" --ratio 9:16 --output ad.png
+    python generate_image.py --batch prompts.json --provider "$ADS_IMAGE_PROVIDER" --model "$ADS_IMAGE_MODEL" --output-dir ./ad-assets/
 
 Environment variables:
-    ADS_IMAGE_PROVIDER   Provider to use: gemini (default), openai, stability, replicate
+    ADS_IMAGE_PROVIDER   Required unless --provider is supplied
+    ADS_IMAGE_MODEL      Required unless --model is supplied
     GOOGLE_API_KEY       Required for gemini provider
     OPENAI_API_KEY       Required for openai provider
     STABILITY_API_KEY    Required for stability provider
@@ -33,18 +26,22 @@ See ads/references/image-providers.md for pricing and capability details.
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import struct
 import sys
+import tempfile
 import time
 from pathlib import Path
+from typing import Any, Mapping
 from urllib.parse import urlparse
 
+from claude_ads_core.contracts import ContractError, load_contract, validate_contract
 # Single source of truth for credential redaction (see scripts/url_utils.py).
 # Re-exported under the local _sanitize_error name so existing call sites do
 # not need to change.
-from url_utils import guarded_request, resolve_output_path, sanitize_error as _sanitize_error
+from url_utils import artifact_locator, guarded_request, resolve_output_path, sanitize_error as _sanitize_error
 
 # Aspect ratio shorthand → (width, height)
 ASPECT_RATIOS = {
@@ -72,18 +69,45 @@ GEMINI_RATIO_MAP = {
     "21:9":   "21:9",
 }
 
-DEFAULT_PROVIDER = "gemini"
-DEFAULT_MODEL_GEMINI = "gemini-2.5-flash-image"
-DEFAULT_MODEL_OPENAI = "gpt-image-1"
-DEFAULT_MODEL_STABILITY = "stable-diffusion-3.5-large"
-DEFAULT_MODEL_REPLICATE = "black-forest-labs/flux-1.1-pro"
-
 MAX_RETRIES = 4
 RETRY_BACKOFF = [1, 2, 4, 8]  # seconds
 
 MAX_BATCH_SIZE = 50
 MAX_DIMENSION = 8192
 _ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+
+_PROMPT_SUMMARY = "[redacted: raw prompt is ephemeral and is not persisted]"
+
+
+def _prompt_record(prompt: str) -> dict[str, str]:
+    """Return the irreversible prompt identity allowed in shipped JSON."""
+    return {
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "prompt_summary": _PROMPT_SUMMARY,
+    }
+
+
+def _reference_image_sha256(path: str | None) -> str | None:
+    if not path:
+        return None
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _write_private(path: Path, data: bytes) -> None:
+    """Atomically write a generated asset with owner-only permissions."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _actual_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
@@ -138,8 +162,8 @@ def _get_api_key(provider: str) -> str:
             f"To use the {provider} provider:\n"
             f"  export {env_var}=\"your-key\"\n"
             f"  Get a key at: {url}\n"
-            f"\nTo use a different provider:\n"
-            f"  export ADS_IMAGE_PROVIDER=\"openai\"",
+            f"\nTo use a different approved capability, set both "
+            f"ADS_IMAGE_PROVIDER and ADS_IMAGE_MODEL explicitly.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -171,8 +195,7 @@ def generate_gemini(prompt: str, width: int, height: int, api_key: str, model: s
     Args:
         reference_image_path: Optional path to a brand screenshot for style-guided
             generation. When provided, the image is passed as a visual style reference
-            alongside the text prompt. Best used with gemini-3.1-flash-image-preview
-            (Nano Banana 2) which has enhanced style-transfer capabilities.
+            alongside the text prompt when the explicitly selected model supports it.
     """
     try:
         from google import genai
@@ -364,46 +387,40 @@ def generate_image(
     prompt: str,
     ratio: str,
     provider: str,
-    model: str | None,
+    model: str,
     api_key: str,
     reference_image_path: str | None = None,
 ) -> tuple[bytes, int, int]:
     """
     Generate a single image. Returns (image_bytes, width, height).
     """
+    provider, model = _require_selection(provider, model)
     width, height = _dims_from_ratio(ratio)
 
     if provider == "gemini":
-        # Auto-upgrade to Nano Banana 2 (gemini-3.1-flash-image-preview) for
-        # reference-guided generation, as it has better visual style-transfer capability
-        if not model and reference_image_path and os.path.exists(reference_image_path):
-            preview_model = "gemini-3.1-flash-image-preview"
-            try:
-                image_bytes = generate_gemini(prompt, width, height, api_key, preview_model, reference_image_path)
-                model = preview_model
-            except Exception as preview_err:
-                err_str = _sanitize_error(preview_err)
-                if any(code in err_str for code in ("404", "NOT_FOUND", "invalid_argument", "not found")):
-                    print(
-                        f"Warning: {preview_model} unavailable ({err_str[:80]}). "
-                        f"Falling back to {DEFAULT_MODEL_GEMINI} (text-only, no style reference).",
-                        file=sys.stderr,
-                    )
-                    model = DEFAULT_MODEL_GEMINI
-                    image_bytes = generate_gemini(prompt, width, height, api_key, model, None)
-                else:
-                    raise  # rate limit, safety filter, auth errors: re-raise as normal
-        else:
-            model = model or DEFAULT_MODEL_GEMINI
-            image_bytes = generate_gemini(prompt, width, height, api_key, model, reference_image_path)
+        image_bytes = generate_gemini(
+            prompt, width, height, api_key, model, reference_image_path
+        )
     elif provider == "openai":
-        model = model or DEFAULT_MODEL_OPENAI
+        if reference_image_path:
+            raise ValueError(
+                "The openai adapter does not declare reference-image support; "
+                "choose a verified compatible capability or omit the reference image"
+            )
         image_bytes = generate_openai(prompt, width, height, api_key, model)
     elif provider == "stability":
-        model = model or DEFAULT_MODEL_STABILITY
+        if reference_image_path:
+            raise ValueError(
+                "The stability adapter does not declare reference-image support; "
+                "choose a verified compatible capability or omit the reference image"
+            )
         image_bytes = generate_stability(prompt, width, height, api_key, model)
     elif provider == "replicate":
-        model = model or DEFAULT_MODEL_REPLICATE
+        if reference_image_path:
+            raise ValueError(
+                "The replicate adapter does not declare reference-image support; "
+                "choose a verified compatible capability or omit the reference image"
+            )
         image_bytes = generate_replicate(prompt, width, height, api_key, model)
     else:
         print(f"Error: Unknown provider '{provider}'", file=sys.stderr)
@@ -418,7 +435,32 @@ def generate_image(
     return image_bytes, width, height
 
 
-def run_batch(batch_file: str, output_dir: str, provider: str, model: str | None, api_key: str, as_json: bool) -> None:
+def _require_selection(provider: str | None, model: str | None) -> tuple[str, str]:
+    """Return explicit provider/model identifiers or fail before credentials/network."""
+    selected_provider = (provider or "").strip().lower()
+    selected_model = (model or "").strip()
+    if not selected_provider:
+        raise ValueError(
+            "Image provider is required; use --provider or ADS_IMAGE_PROVIDER "
+            "after capability discovery"
+        )
+    if not selected_model:
+        raise ValueError(
+            "Image model is required; use --model or ADS_IMAGE_MODEL after "
+            "capability discovery"
+        )
+    return selected_provider, selected_model
+
+
+def run_batch(
+    batch_file: str,
+    output_dir: str,
+    provider: str,
+    model: str,
+    api_key: str,
+    as_json: bool,
+    data_lifecycle: Mapping[str, Any],
+) -> None:
     """
     Process a batch JSON file of generation jobs.
 
@@ -428,6 +470,8 @@ def run_batch(batch_file: str, output_dir: str, provider: str, model: str | None
         {"prompt": "...", "ratio": "1:1",  "output": "meta-square.png"}
     ]
     """
+    provider, model = _require_selection(provider, model)
+    validate_contract("data-lifecycle", data_lifecycle)
     with open(batch_file) as f:
         jobs = json.load(f)
 
@@ -445,33 +489,37 @@ def run_batch(batch_file: str, output_dir: str, provider: str, model: str | None
         output_name = job.get("output", f"image_{i:03d}.png")
         # Security: strip path components to prevent directory traversal
         output_name = Path(output_name).name
-        output_path = str(resolve_output_path(output_dir_path / output_name))
+        output_path = resolve_output_path(output_dir_path / output_name)
         reference_image = job.get("reference_image", None)
         if reference_image and Path(reference_image).suffix.lower() not in _ALLOWED_IMAGE_EXTENSIONS:
-            print(f"  ⚠ Skipping invalid reference image: {reference_image}", file=sys.stderr)
+            print("  ⚠ Skipping reference image with an unsupported extension.", file=sys.stderr)
             reference_image = None
 
         result = {
             "index": i,
-            "prompt": prompt,
+            **_prompt_record(prompt),
             "ratio": ratio,
-            "file": output_path,
+            "file_locator": artifact_locator(output_path),
             "provider": provider,
+            "model": model,
+            "reference_image_sha256": None,
+            "data_lifecycle": dict(data_lifecycle),
             "generation_success": False,
             "error": None,
         }
 
         try:
             print(f"[{i+1}/{len(jobs)}] Generating {output_name}...", file=sys.stderr)
+            reference_sha256 = _reference_image_sha256(reference_image)
             image_bytes, width, height = generate_image(prompt, ratio, provider, model, api_key, reference_image)
-            with open(output_path, "wb") as out:
-                out.write(image_bytes)
+            _write_private(output_path, image_bytes)
+            result["reference_image_sha256"] = reference_sha256
             result["generation_success"] = True
             result["width"] = width
             result["height"] = height
-            print(f"  ✓ Saved to {output_path} ({width}×{height})", file=sys.stderr)
+            print(f"  ✓ Saved artifact {artifact_locator(output_path)} ({width}×{height})", file=sys.stderr)
         except Exception as e:
-            result["error"] = _sanitize_error(e)
+            result["error"] = "generation failed; inspect private ephemeral runtime logs"
             print(f"  ✗ Error: {_sanitize_error(e)}", file=sys.stderr)
 
         results.append(result)
@@ -483,7 +531,7 @@ def run_batch(batch_file: str, output_dir: str, provider: str, model: str | None
         print(f"\nBatch complete: {passed}/{len(results)} images generated")
         for r in results:
             status = "✓" if r["generation_success"] else "✗"
-            print(f"  {status} {r['file']}")
+            print(f"  {status} {r['file_locator']}")
 
 
 def main():
@@ -492,16 +540,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python generate_image.py "professional ad for SaaS product" --ratio 16:9 --output ad.png
-  python generate_image.py "product on white background" --ratio 1:1 --json
-  python generate_image.py "TikTok ad" --ratio 9:16 --provider gemini
-  python generate_image.py --batch prompts.json --output-dir ./ad-assets/
-  python generate_image.py "ad creative" --size 1200x628 --output landscape.png
+  python generate_image.py "approved creative prompt" --provider "$ADS_IMAGE_PROVIDER" --model "$ADS_IMAGE_MODEL" --ratio 16:9 --output ad.png
+  python generate_image.py --batch prompts.json --provider "$ADS_IMAGE_PROVIDER" --model "$ADS_IMAGE_MODEL" --output-dir ./ad-assets/
 
 Supported ratios: 1:1  9:16  16:9  4:5  4:3  3:4  1.91:1  4:1  21:9
 Or use --size WxH for exact dimensions (e.g. --size 1200x628)
 
-Set ADS_IMAGE_PROVIDER to switch providers: gemini (default), openai, stability, replicate
+Both provider and model are required. Discover an approved capability first, then
+use --provider/--model or ADS_IMAGE_PROVIDER/ADS_IMAGE_MODEL.
 """,
     )
 
@@ -531,33 +577,50 @@ Set ADS_IMAGE_PROVIDER to switch providers: gemini (default), openai, stability,
     parser.add_argument(
         "--provider", "-p",
         default=None,
-        help="Image provider: gemini (default), openai, stability, replicate. Overrides ADS_IMAGE_PROVIDER env var.",
+        help="Required provider adapter ID. Overrides ADS_IMAGE_PROVIDER.",
     )
     parser.add_argument(
         "--model", "-m",
         default=None,
-        help="Model name override (e.g. gemini-3.1-flash-image-preview). Defaults to provider's current default.",
+        help="Required model ID from current capability evidence. Overrides ADS_IMAGE_MODEL.",
     )
     parser.add_argument(
         "--reference-image", "-i",
         metavar="FILE",
         dest="reference_image",
-        help="Path to brand reference image for style guidance (Gemini only). "
-             "Auto-selects gemini-3.1-flash-image-preview for better style transfer.",
+        help="Path to a rights-cleared brand reference image. Requires explicit "
+             "support from the selected provider/model adapter.",
     )
 
     # Output format
     parser.add_argument("--json", "-j", action="store_true", help="Output result as JSON")
+    parser.add_argument(
+        "--data-lifecycle",
+        required=True,
+        help="Path to a valid data-lifecycle JSON contract for this generation run.",
+    )
 
     args = parser.parse_args()
 
-    # Resolve provider
-    provider = args.provider or os.environ.get("ADS_IMAGE_PROVIDER", DEFAULT_PROVIDER)
+    # Resolve the explicitly selected, capability-verified provider and model.
+    try:
+        provider, model = _require_selection(
+            args.provider or os.environ.get("ADS_IMAGE_PROVIDER"),
+            args.model or os.environ.get("ADS_IMAGE_MODEL"),
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     api_key = _get_api_key(provider)
+
+    try:
+        data_lifecycle = load_contract("data-lifecycle", args.data_lifecycle)
+    except ContractError as exc:
+        print(f"Error: {_sanitize_error(exc)}", file=sys.stderr)
+        sys.exit(1)
 
     # Batch mode
     if args.batch:
-        run_batch(args.batch, args.output_dir, provider, args.model, api_key, args.json)
+        run_batch(args.batch, args.output_dir, provider, model, api_key, args.json, data_lifecycle)
         return
 
     # Single image mode
@@ -569,7 +632,10 @@ Set ADS_IMAGE_PROVIDER to switch providers: gemini (default), openai, stability,
         output_path = f"ad_{safe_ratio}.png"
 
     try:
-        image_bytes, width, height = generate_image(args.prompt, ratio, provider, args.model, api_key, args.reference_image)
+        reference_sha256 = _reference_image_sha256(args.reference_image)
+        image_bytes, width, height = generate_image(
+            args.prompt, ratio, provider, model, api_key, args.reference_image
+        )
     except Exception as e:
         print(f"Error: {_sanitize_error(e)}", file=sys.stderr)
         sys.exit(1)
@@ -579,25 +645,25 @@ Set ADS_IMAGE_PROVIDER to switch providers: gemini (default), openai, stability,
     except ValueError as exc:
         print(f"Error: {_sanitize_error(exc)}", file=sys.stderr)
         sys.exit(1)
-    with resolved_output.open("wb") as f:
-        f.write(image_bytes)
+    _write_private(resolved_output, image_bytes)
 
     result = {
         "success": True,
-        "file": str(resolved_output),
+        "file_locator": artifact_locator(resolved_output),
         "provider": provider,
-        "model": args.model or f"default ({provider})",
+        "model": model,
         "width": width,
         "height": height,
         "ratio": ratio,
-        "prompt": args.prompt,
-        "reference_image": args.reference_image,
+        **_prompt_record(args.prompt),
+        "reference_image_sha256": reference_sha256,
+        "data_lifecycle": data_lifecycle,
     }
 
     if args.json:
         print(json.dumps(result, indent=2))
     else:
-        print(f"✓ Generated {width}×{height} image → {resolved_output}")
+        print(f"✓ Generated {width}×{height} image → {artifact_locator(resolved_output)}")
 
 
 if __name__ == "__main__":

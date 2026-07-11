@@ -217,6 +217,40 @@ def test_release_gate_fails_closed_without_external_model_review_and_ci_evidence
     assert checks["remote-ci"]["status"] == "fail"
 
 
+def test_release_gate_forwards_external_model_trust_inputs(tmp_path: Path, monkeypatch) -> None:
+    root = RELEASE_SCRIPT.parents[1]
+    model_report = tmp_path / "model-report.json"
+    model_report.write_text("{}", encoding="utf-8")
+    captured = {}
+
+    class ModelGate:
+        @staticmethod
+        def verify_release_report(*args, **kwargs):
+            captured.update(kwargs)
+            return {"release_gate_satisfied": True}
+
+    original = release._load_local_module
+
+    def load(root_arg, relative, module_name):
+        if relative == "evals/model_eval_gate.py":
+            return ModelGate
+        return original(root_arg, relative, module_name)
+
+    monkeypatch.setattr(release, "_load_local_module", load)
+    evaluate_release_gate(
+        root,
+        model_report=model_report,
+        review_evidence_dir=None,
+        github_run_id=None,
+        model_trust_bundle_json='{"external":true}',
+        model_implementation_principals_json='["implementer"]',
+    )
+    assert captured == {
+        "trust_bundle_json": '{"external":true}',
+        "implementation_principals_json": '["implementer"]',
+    }
+
+
 def test_remote_ci_verifier_requires_exact_private_subject_and_all_jobs(
     tmp_path: Path, monkeypatch
 ) -> None:

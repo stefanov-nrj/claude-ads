@@ -746,3 +746,14 @@ def resolve_output_path(
     if create_parent:
         candidate.parent.mkdir(parents=True, exist_ok=True)
     return candidate
+
+
+def artifact_locator(
+    path: str | os.PathLike[str],
+    *,
+    root: str | os.PathLike[str] | None = None,
+) -> str:
+    """Return a repository/run-relative locator without disclosing a local path."""
+    base = output_root(root)
+    candidate = resolve_output_path(path, root=base)
+    return candidate.relative_to(base).as_posix()

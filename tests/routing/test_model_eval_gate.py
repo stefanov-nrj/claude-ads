@@ -3,24 +3,72 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from evals.model_eval_gate import (
     EvaluationContractError,
     assess,
     build_plan,
     verify_release_report,
+    _evaluator_binding,
+    _runner_binding,
 )
+from evals.model_evidence_auth import canonical_bytes
 
 
 CANDIDATE_COMMIT = "1" * 40
 CANDIDATE_TREE = "2" * 40
 BASELINE_COMMIT = "86690b668e2cc616e03bdb2f1a28aa951d6c29ad"
 BASELINE_TREE = "92680a710c5366ba875aad92b12cb129369ab6b3"
+NOW = datetime(2026, 7, 11, 13, 0, tzinfo=timezone.utc)
+RUNNER_KEY = Ed25519PrivateKey.generate()
+EVALUATOR_KEY = Ed25519PrivateKey.generate()
+
+
+def _public_b64(key: Ed25519PrivateKey) -> str:
+    raw = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+TRUST = json.dumps(
+    {
+        "schema_version": "1.0.0",
+        "evidence_class": "external_model_eval_trust_bundle",
+        "provenance": "external-release-operator",
+        "issued_at": "2026-07-11T09:00:00Z",
+        "keys": [
+            {
+                "signer_id": "external-runner",
+                "key_id": "runner-key",
+                "public_key_b64url": _public_b64(RUNNER_KEY),
+                "role": "runner",
+                "evidence_roles": ["candidate", "retained-v1"],
+                "valid_from": "2026-07-11T00:00:00Z",
+                "valid_until": "2026-07-25T00:00:00Z",
+            },
+            {
+                "signer_id": "external-evaluator",
+                "key_id": "evaluator-key",
+                "public_key_b64url": _public_b64(EVALUATOR_KEY),
+                "role": "evaluator",
+                "evidence_roles": ["candidate", "retained-v1"],
+                "valid_from": "2026-07-11T00:00:00Z",
+                "valid_until": "2026-07-25T00:00:00Z",
+            },
+        ],
+    }
+)
+PRINCIPALS = json.dumps(["implementation-agent"])
 
 
 def _sha(value: str) -> str:
@@ -51,6 +99,10 @@ def _case_evidence(case: dict, *, passed: bool = True) -> dict:
         "prompt_sha256": _sha(case["prompt"]),
         "response_sha256": _sha(response),
         "response": response,
+        "skill_invocation": {
+            "entrypoint": "/claude-ads:ads",
+            "mode": "explicit-plugin-skill",
+        },
         "required_behavior_results": required_results,
         "forbidden_behavior_results": [
             {
@@ -72,8 +124,8 @@ def _run_evidence(
 ) -> dict:
     failed_ids = failed_ids or set()
     candidate = role == "candidate"
-    return {
-        "schema_version": "1.0.0",
+    run = {
+        "schema_version": "2.0.0",
         "evidence_class": "external_model_run",
         "contract_id": "claude-ads-v2-canonical-model-gate",
         "run_id": f"canonical-{role}-run",
@@ -96,6 +148,8 @@ def _run_evidence(
             "provider": "anthropic",
             "model_id": "claude-model",
             "model_snapshot": model_snapshot,
+            "skill_entrypoint": "/claude-ads:ads",
+            "invocation_mode": "explicit-plugin-skill",
             "fresh_process_per_case": True,
             "conversation_reuse": False,
             "skill_loaded": True,
@@ -103,7 +157,7 @@ def _run_evidence(
         "execution": {
             "started_at": "2026-07-11T10:00:00Z",
             "finished_at": "2026-07-11T11:00:00Z",
-            "executor_identity": f"runner-{role}",
+            "executor_identity": "external-runner",
             "environment_id": f"isolated-{role}",
             "clean_checkout": True,
             "mutation_authority": "none",
@@ -111,7 +165,7 @@ def _run_evidence(
         },
         "evaluator": {
             "kind": "human",
-            "identity": f"reviewer-{role}",
+            "identity": "external-evaluator",
             "rubric_id": "claude-ads-observable-behavior-v1",
             "independent_from_subject_run": True,
             "evaluated_at": "2026-07-11T12:00:00Z",
@@ -122,6 +176,46 @@ def _run_evidence(
             for case in _suite(repo_root)
         ],
     }
+    passed_count = 24 - len(failed_ids)
+    result = {
+        "case_count": 24,
+        "passed": passed_count,
+        "failed": len(failed_ids),
+        "score_percent": round(100 * passed_count / 24, 2),
+        "p0_failures": sum(
+            case["risk"] == "P0" and case["id"] in failed_ids for case in _suite(repo_root)
+        ),
+        "failed_case_ids": [case["id"] for case in _suite(repo_root) if case["id"] in failed_ids],
+    }
+    runner_unsigned = {
+        "signer_id": "external-runner",
+        "key_id": "runner-key",
+        "role": "runner",
+        "signed_at": "2026-07-11T11:05:00Z",
+        "binding": _runner_binding(run),
+    }
+    evaluator_unsigned = {
+        "signer_id": "external-evaluator",
+        "key_id": "evaluator-key",
+        "role": "evaluator",
+        "signed_at": "2026-07-11T12:05:00Z",
+        "binding": _evaluator_binding(run, result),
+    }
+    run["authentication"] = {
+        "runner": {
+            **runner_unsigned,
+            "signature_b64url": base64.urlsafe_b64encode(
+                RUNNER_KEY.sign(canonical_bytes(runner_unsigned))
+            ).decode().rstrip("="),
+        },
+        "evaluator": {
+            **evaluator_unsigned,
+            "signature_b64url": base64.urlsafe_b64encode(
+                EVALUATOR_KEY.sign(canonical_bytes(evaluator_unsigned))
+            ).decode().rstrip("="),
+        },
+    }
+    return run
 
 
 def _write(path: Path, payload: dict) -> Path:
@@ -137,6 +231,31 @@ def _assess(repo_root: Path, tmp_path: Path, candidate: dict, baseline: dict) ->
         _write(tmp_path / "baseline-private.json", baseline),
         CANDIDATE_COMMIT,
         CANDIDATE_TREE,
+        trust_bundle_json=TRUST,
+        implementation_principals_json=PRINCIPALS,
+        now=NOW,
+    )
+
+
+def _assess_with_auth(
+    repo_root: Path,
+    tmp_path: Path,
+    candidate: dict,
+    *,
+    trust: str | None = TRUST,
+    principals: str | None = PRINCIPALS,
+    now: datetime = NOW,
+) -> dict:
+    return assess(
+        repo_root / "evals" / "model-eval-contract.json",
+        repo_root,
+        _write(tmp_path / "candidate-auth.json", candidate),
+        _write(tmp_path / "baseline-auth.json", _run_evidence(repo_root, "retained-v1")),
+        CANDIDATE_COMMIT,
+        CANDIDATE_TREE,
+        trust_bundle_json=trust,
+        implementation_principals_json=principals,
+        now=now,
     )
 
 
@@ -153,6 +272,21 @@ def test_execution_plan_is_pinned_and_explicitly_not_run_evidence(repo_root):
         assert packet["prompt_sha256"] == _sha(case["prompt"])
         assert packet["required_behaviors"] == case["required_behaviors"]
         assert packet["forbidden_behaviors"] == case["forbidden_behaviors"]
+        assert packet["skill_invocation"] == {
+            "entrypoint": "/claude-ads:ads",
+            "mode": "explicit-plugin-skill",
+        }
+
+
+def test_every_case_requires_explicit_namespaced_plugin_entrypoint(repo_root, tmp_path):
+    candidate = _run_evidence(repo_root, "candidate")
+    candidate["cases"][0]["skill_invocation"] = {
+        "entrypoint": "/ads",
+        "mode": "natural-skill-selection",
+    }
+    report = _assess_with_auth(repo_root, tmp_path, candidate)
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+    assert "explicitly invoke /claude-ads:ads" in report["external_runs"]["candidate"]["error"]
 
 
 def test_missing_external_runs_fail_closed_without_local_substitution(repo_root):
@@ -332,7 +466,9 @@ def test_cli_writes_deterministic_failing_report_and_nonzero_status(repo_root, t
     assert json.loads(first_bytes)["release_gate_satisfied"] is False
 
 
-def test_stored_release_report_verification_rejects_tampering(repo_root, tmp_path):
+def test_stored_release_report_verification_rejects_tampering(
+    repo_root, tmp_path, monkeypatch
+):
     report = _assess(
         repo_root,
         tmp_path,
@@ -340,12 +476,25 @@ def test_stored_release_report_verification_rejects_tampering(repo_root, tmp_pat
         _run_evidence(repo_root, "retained-v1"),
     )
     report_path = _write(tmp_path / "gate.json", report)
+    monkeypatch.delenv("CLAUDE_ADS_MODEL_EVAL_TRUST_BUNDLE_JSON", raising=False)
+    monkeypatch.delenv("CLAUDE_ADS_MODEL_EVAL_IMPLEMENTATION_PRINCIPALS_JSON", raising=False)
+    with pytest.raises(EvaluationContractError, match="external trust input"):
+        verify_release_report(
+            report_path,
+            repo_root / "evals" / "model-eval-contract.json",
+            repo_root,
+            CANDIDATE_COMMIT,
+            CANDIDATE_TREE,
+        )
     verified = verify_release_report(
         report_path,
         repo_root / "evals" / "model-eval-contract.json",
         repo_root,
         CANDIDATE_COMMIT,
         CANDIDATE_TREE,
+        trust_bundle_json=TRUST,
+        implementation_principals_json=PRINCIPALS,
+        now=NOW,
     )
     assert verified["release_gate_satisfied"] is True
 
@@ -359,6 +508,9 @@ def test_stored_release_report_verification_rejects_tampering(repo_root, tmp_pat
             repo_root,
             CANDIDATE_COMMIT,
             CANDIDATE_TREE,
+            trust_bundle_json=TRUST,
+            implementation_principals_json=PRINCIPALS,
+            now=NOW,
         )
     except EvaluationContractError as exc:
         assert "counts" in str(exc) or "score" in str(exc)
@@ -368,15 +520,90 @@ def test_stored_release_report_verification_rejects_tampering(repo_root, tmp_pat
 
 def test_contract_schemas_are_strict_and_machine_readable(repo_root):
     run_schema = json.loads(
-        (repo_root / "evals" / "schemas" / "model-run-evidence.v1.schema.json").read_text()
+        (repo_root / "evals" / "schemas" / "model-run-evidence.v2.schema.json").read_text()
     )
     report_schema = json.loads(
-        (repo_root / "evals" / "schemas" / "model-gate-report.v1.schema.json").read_text()
+        (repo_root / "evals" / "schemas" / "model-gate-report.v2.schema.json").read_text()
+    )
+    trust_schema = json.loads(
+        (repo_root / "evals" / "schemas" / "model-eval-trust-bundle.v1.schema.json").read_text()
     )
     assert run_schema["additionalProperties"] is False
     assert run_schema["properties"]["evidence_class"]["const"] == "external_model_run"
+    assert "authentication" in run_schema["required"]
     assert report_schema["additionalProperties"] is False
     assert report_schema["properties"]["evidence_class"]["const"] == (
         "local_deterministic_assessment"
     )
     assert "response" not in report_schema["$defs"]["runSummary"]["properties"]
+    assert trust_schema["additionalProperties"] is False
+    assert trust_schema["properties"]["provenance"]["const"] == "external-release-operator"
+
+
+def test_forged_and_self_signed_runner_evidence_fail(repo_root, tmp_path):
+    forged = _run_evidence(repo_root, "candidate")
+    signature = forged["authentication"]["runner"]["signature_b64url"]
+    forged["authentication"]["runner"]["signature_b64url"] = (
+        ("A" if signature[0] != "A" else "B") + signature[1:]
+    )
+    report = _assess_with_auth(repo_root, tmp_path, forged)
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+    assert "signature verification failed" in report["external_runs"]["candidate"]["error"]
+
+    self_signed = _run_evidence(repo_root, "candidate")
+    rogue = Ed25519PrivateKey.generate()
+    envelope = self_signed["authentication"]["runner"]
+    unsigned = {key: value for key, value in envelope.items() if key != "signature_b64url"}
+    envelope["signature_b64url"] = base64.urlsafe_b64encode(
+        rogue.sign(canonical_bytes(unsigned))
+    ).decode().rstrip("=")
+    report = _assess_with_auth(repo_root, tmp_path, self_signed)
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+
+
+def test_repo_local_missing_external_trust_and_mis_scoped_key_fail(
+    repo_root, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("CLAUDE_ADS_MODEL_EVAL_TRUST_BUNDLE_JSON", raising=False)
+    monkeypatch.delenv("CLAUDE_ADS_MODEL_EVAL_IMPLEMENTATION_PRINCIPALS_JSON", raising=False)
+    (tmp_path / "repo-local-trust.json").write_text(TRUST, encoding="utf-8")
+    report = _assess_with_auth(
+        repo_root,
+        tmp_path,
+        _run_evidence(repo_root, "candidate"),
+        trust=None,
+        principals=None,
+    )
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+    assert "external trust input" in report["external_runs"]["candidate"]["error"]
+
+    mis_scoped = json.loads(TRUST)
+    mis_scoped["keys"][0]["role"] = "evaluator"
+    report = _assess_with_auth(
+        repo_root,
+        tmp_path,
+        _run_evidence(repo_root, "candidate"),
+        trust=json.dumps(mis_scoped),
+    )
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+    assert "key scope" in report["external_runs"]["candidate"]["error"]
+
+
+def test_stale_signatures_and_implementation_principal_self_review_fail(repo_root, tmp_path):
+    report = _assess_with_auth(
+        repo_root,
+        tmp_path,
+        _run_evidence(repo_root, "candidate"),
+        now=datetime(2026, 8, 1, tzinfo=timezone.utc),
+    )
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+    assert "stale" in report["external_runs"]["candidate"]["error"]
+
+    report = _assess_with_auth(
+        repo_root,
+        tmp_path,
+        _run_evidence(repo_root, "candidate"),
+        principals=json.dumps(["implementation-agent", "external-evaluator"]),
+    )
+    assert report["external_runs"]["candidate"]["status"] == "invalid"
+    assert "implementation principal" in report["external_runs"]["candidate"]["error"]

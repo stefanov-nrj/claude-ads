@@ -8,6 +8,7 @@
     "schema_version",
     "operation",
     "privacy_class",
+    "data_lifecycle",
     "recorded_at",
     "target",
     "artifact",
@@ -17,6 +18,7 @@
     "schema_version": {"const": "1.0.0"},
     "operation": {"const": "browser-screenshot-capture"},
     "privacy_class": {"const": "confidential"},
+    "data_lifecycle": {"$ref": "../../claude_ads_core/schemas/v1/data-lifecycle.schema.json"},
     "recorded_at": {"type": "string", "format": "date-time"},
     "target": {
       "type": "object",
@@ -30,9 +32,9 @@
     "artifact": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["filename", "sha256", "size"],
+      "required": ["locator", "sha256", "size"],
       "properties": {
-        "filename": {"type": "string", "minLength": 1, "maxLength": 255},
+        "locator": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "size": {"type": "integer", "minimum": 1}
       }

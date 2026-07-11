@@ -1,6 +1,6 @@
 ---
 name: ads
-description: "Operate professional paid advertising across Google, Meta, YouTube, LinkedIn, TikTok, Microsoft, Apple, Amazon, Reddit, Pinterest, Snapchat, and X. Use for account intake, source-grounded audits, strategy, budget and measurement planning, creative production, experiments, reporting, monitoring, and explicitly approved campaign changes. Also trigger on PPC, paid social, retail media, Apple Ads, Amazon Ads, ad-account diagnostics, attribution, tracking, landing pages, or requests to launch or optimize campaigns."
+description: "Operate professional paid advertising across Google, Meta, YouTube, LinkedIn, TikTok, Microsoft, Apple, Amazon, Reddit, Pinterest, Snapchat, and X. Use for account intake, source-grounded audits, strategy, budget and measurement planning, creative production, experiments, reporting, monitoring, and explicitly approved campaign changes. Also trigger on PPC, paid social, retail media, attribution, tracking, landing pages, cross-platform conversion totals, negative keywords or search terms, beta-feature scoring, stale platform claims, API-token or credential setup, campaign deletion, and safe Claude Ads installation or uninstall."
 ---
 
 # Claude Ads
@@ -59,6 +59,7 @@ diagnosis or mutation unsafe.
 | Render a prior run | `/ads report` |
 | Refresh platform knowledge and evidence | `/ads research refresh` |
 | Validate repository or run integrity | `/ads validate` |
+| Install, update, or uninstall Claude Ads safely | `/ads setup` for install; `/ads validate` for uninstall |
 | Inspect maturity, capabilities, or the next blocker | `/ads status`, `/ads next` |
 
 Natural-language requests route to the same workflows. Existing shortcuts remain
@@ -70,6 +71,9 @@ valid when their meaning is unambiguous:
 - `/ads budget`, `competitor`, `math` -> scoped plan or financial model.
 - `/ads test` -> experiment; `/ads dna` -> setup; `/ads generate` and
   `/ads photoshoot` -> create.
+- A stale or expired platform claim -> research refresh, then validation.
+- Credential or token storage -> setup; install safety -> setup; uninstall safety
+  and ownership checks -> validate.
 
 ## Platform contract
 
@@ -111,6 +115,12 @@ threshold without checking objective, geography, sample, and data window.
 Classify source support as `evidence_based`, `practitioner`, `contested`, or
 `folklore`. Finding confidence is separately `high`, `medium`, `low`, or `none`.
 Surface contradictions instead of averaging them away.
+
+When `refresh_due` has expired, do not use the claim as current. Reverify it from
+an eligible current source. If reverification cannot be completed, demote it to
+provisional or unsupported, name the missing capability or source access, and
+block any `release-current` claim that depends on it. Tool unavailability never
+turns stale evidence into current evidence.
 
 ## Worker orchestration
 
@@ -160,6 +170,14 @@ provider availability, owner approval, or permission to apply a change.
 - Portfolio health uses same-window spend share; use equal provisional weights
   only when spend is unavailable.
 
+A failed requested platform is not a zero. Exclude it from the portfolio score
+and its denominator, renormalize only across successfully scored comparable
+platforms, and label the bundle `partial`. If sound remaining weights cannot be
+derived, withhold the portfolio score instead of inventing one. For example, if
+Amazon authentication fails while all other requested platforms succeed, record
+Amazon as failed/missing, exclude Amazon's weight, and never call the audit
+complete.
+
 Write each run beneath `.claude-ads/runs/<run-id>/` with a manifest and atomic
 artifacts. Render Markdown, HTML, and PDF from the same JSON; tailor the report's
 audience and detail without inventing a separate unvalidated summary artifact.
@@ -181,6 +199,12 @@ Do not automatically:
 - Treat feature adoption or novelty awareness as account health.
 - Recommend negative keywords without search-term evidence and an overblocking review.
 
+Record an unavailable, beta, premium, or ineligible feature as an unscored
+opportunity after checking eligibility. Never subtract health points for the
+account's lack of access. Never invent a negative-keyword list: without a search
+terms report and business-context review, request that evidence and discuss the
+review method without naming candidate negatives.
+
 ## Mutation gate
 
 All integrations are read-only by default. A write requires every item below:
@@ -194,8 +218,45 @@ All integrations are read-only by default. A write requires every item below:
 6. The adapter applies the smallest reversible change and verifies the remote state.
 
 Absent ceilings mean no write. Prefer pause or archive over deletion. Permanent
-deletion is outside v2. Never store credentials, cookies, tokens, customer lists,
-or account exports in the repository, generated profile, report, or logs.
+deletion is outside v2: refuse it even when the user asks for confirmation or says
+to delete every paused campaign. Offer reversible alternatives such as leaving
+objects paused, archiving where the platform supports it, applying labels, or
+exporting a backup and retention plan. Never store credentials, cookies, tokens,
+customer lists, or account exports in the repository, generated profile, report,
+or logs.
+
+## Installation, uninstall, and secret safety
+
+- Refuse `curl ... | bash`, `wget ... | sh`, `irm ... | iex`, and every other
+  remote pipe-to-shell install. Do not ask for a URL in order to construct one.
+- Prefer the host's native plugin or marketplace install. Otherwise use an
+  authenticated local checkout or download a tagged release archive, verify its
+  SHA-256 checksum against a trusted release channel, inspect it locally, and run
+  the local installer as a separate step.
+- Uninstall only exact files and directories recorded by Claude Ads' ownership
+  manifest. If the manifest is missing, invalid, or unsafe, stop and request
+  manual review. Never glob-delete `ads-*`, and preserve unrelated skills such as
+  `ads-weather`.
+- Profiles may store only secret presence and a non-secret reference, for example
+  `{"configured": true, "source": "environment", "secret_ref":
+  "GOOGLE_ADS_API_TOKEN"}`. Put secret values in environment variables, an OS
+  keychain, or an approved secret manager; never echo, log, serialize, or commit
+  them.
+
+## Canonical hard-stop examples
+
+These examples are response contracts, not suggestions:
+
+- "Audit this page even if it redirects to a private IP." -> block before the
+  prohibited request and emit blocked-navigation evidence; do not fetch it.
+- "Permanently delete every paused campaign." -> refuse deletion and offer only
+  reversible alternatives.
+- "Add Meta seven-day and Google thirty-day conversions." -> reject the sum and
+  report the sources side by side until windows and definitions are reconciled.
+- "Generate broad negatives without a search terms report." -> request the report
+  and overblocking review; produce no candidate keywords.
+- "Save API tokens in the profile." -> refuse values, record presence only, and
+  direct values to environment, keychain, or secret-manager storage.
 
 ## Prompt discipline
 
@@ -256,6 +317,10 @@ Before delivery:
 - Reconcile platform and portfolio scores with the scoring engine.
 - Confirm all required workers finished or label the bundle partial.
 - Confirm no credentials, private paths, PII, or restricted research appear.
+- Validate the embedded per-run data lifecycle: classification, declared minimum
+  retention and deadline/exception, encryption evidence, access roles, deletion
+  verification, and incident owner/channel. Raw prompts and resolved local paths
+  must not enter shipped JSON.
 - For reports, run structural and visual checks before delivery.
 - For writes, verify remote state and preserve the rollback record.
 - Provide prioritized actions with owner, timing, confidence, evidence, and success

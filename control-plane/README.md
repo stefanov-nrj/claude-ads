@@ -22,6 +22,10 @@ system text, account exports, credentials, or raw private corpus.
   contracts; repository templates cannot satisfy the gate.
 - `manifests/`: current product, evidence, capability, safety, orchestration,
   maturity, and ecosystem-review state.
+- `manifests/data-lifecycle-policy.json`: versioned classification, minimum
+  retention, encryption, access, deletion-verification, and incident rules. The
+  matching schema is `schemas/data-lifecycle-policy.schema.json`; per-run values
+  use `claude_ads_core/schemas/v1/data-lifecycle.schema.json`.
 - `manifests/control-registry.json` and `manifests/scoring-profiles.json`: the
   exhaustive typed audit catalog and fail-closed platform health state. A named
   check is not scoreable unless its versioned profile is enabled.
@@ -55,6 +59,11 @@ external signed review directory, reviewer public-key trust bundle, implementati
 principal list, and GitHub Actions run ID. The emitted assessment conforms to
 `schemas/release-gate-report.schema.json` and fails closed when any input is
 missing, stale, unsigned, mismatched, incomplete, or unsuccessful.
+
+Canonical model evidence uses separate externally trusted runner and evaluator
+keys. Supply the model trust bundle and implementation-principal exclusions via
+the `CLAUDE_ADS_MODEL_EVAL_*_JSON` environment variables documented in
+`RELEASE_REQUIREMENTS.md`; no repository file is a trust root.
 
 Run `python -m claude_ads_core status --root . --as-of YYYY-MM-DD` for the
 repository-artifact status, or replace `status` with `next` for exactly one
