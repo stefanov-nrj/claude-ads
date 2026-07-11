@@ -2,18 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v2]
   pull_request:
-    branches: [main]
+    branches: [main, v2]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate
+  repository-audit:
+    name: Repository audit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -23,33 +24,93 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Check Python syntax
-        run: |
-          find . -name "*.py" -not -path "./.git/*" -not -path "./.github-audit/*" | while read -r f; do
-            python3 -m py_compile "$f" && echo "OK: $f"
-          done
+      - name: Install audit dependency
+        run: python -m pip install "pyyaml>=6.0,<7.0"
 
-      - name: Validate JSON files
-        run: |
-          for f in .claude-plugin/plugin.json; do
-            python3 -m json.tool "$f" > /dev/null && echo "OK: $f"
-          done
+      - name: Check Python syntax
+        run: python -m compileall -q claude_ads_core scripts tests
 
       - name: Check shell script syntax
         run: |
-          bash -n install.sh && echo "OK: install.sh"
-          bash -n uninstall.sh && echo "OK: uninstall.sh"
+          bash -n install.sh
+          bash -n uninstall.sh
 
-      - name: Install runtime dependencies
-        run: pip install -r requirements.txt
+      - name: Audit JSON, YAML, frontmatter, paths, and sensitive content
+        run: python scripts/release.py audit
 
-      - name: Install dev dependencies
-        run: pip install -r requirements-dev.txt
+  core-tests:
+    name: Core tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
 
-      - name: Run eval harness (pytest)
-        run: pytest tests/ -v --tb=short
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install core test dependencies
+        run: python -m pip install -e . -r requirements-dev.txt
+
+      - name: Run core tests
+        run: python -m pytest tests/core tests/release -v --tb=short
+
+  full-tests:
+    name: Full test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime and test dependencies
+        run: python -m pip install -e . -r requirements.txt -r requirements-dev.txt
+
+      - name: Run full test suite
+        run: python -m pytest tests -v --tb=short
 
       - name: Audit dependencies for known vulnerabilities
         run: |
-          pip install pip-audit==2.10.0
-          pip-audit -r requirements.txt --strict
+          python -m pip install pip-audit==2.10.0
+          python -m pip_audit -r requirements.txt --strict
+
+  package-smoke:
+    name: Reproducible package smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [repository-audit, core-tests, full-tests]
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging dependency
+        run: python -m pip install "pyyaml>=6.0,<7.0"
+
+      - name: Build and verify twice
+        run: |
+          python scripts/release.py package --output-dir dist/first
+          python scripts/release.py package --output-dir dist/second
+          python scripts/release.py verify --output-dir dist/first
+          python scripts/release.py verify --output-dir dist/second
+          cmp dist/first/*.zip dist/second/*.zip
+          cmp dist/first/release-manifest.json dist/second/release-manifest.json
+          cmp dist/first/sbom.cdx.json dist/second/sbom.cdx.json
+          cmp dist/first/SHA256SUMS dist/second/SHA256SUMS
