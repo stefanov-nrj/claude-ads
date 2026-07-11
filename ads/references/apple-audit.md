@@ -5,9 +5,22 @@ sources before using this reference after its control-plane refresh date.
 
 ## Category model
 
-The platform capability manifest supplies category weights that total 100. The
-deterministic engine applies weights after scoring applicable controls within
-each category; it never multiplies the category weight into each individual row.
+This reference does not define an executable scoring profile. Bind a versioned
+profile whose categories cover the applicable controls and whose weights total 100;
+otherwise produce findings without a health score. The deterministic engine applies
+weights only after scoring applicable controls within each category.
+
+## Runtime evaluation contract
+
+- Treat each row as an applicability-first evidence question. Missing evidence is
+  `unknown`; unavailable or ineligible surfaces are `not_applicable`.
+- Verify app, market, placement, campaign type, reporting access, attribution path,
+  and account eligibility before evaluation.
+- The registered source below grounds the developer API surface only. Current
+  product, policy, attribution, privacy-threshold, report-field, bidding, and
+  creative claims require additional dated official source IDs or account evidence.
+- This reference is advisory and export-read only. It does not provide a live Apple
+  Ads API reader or mutation adapter.
 
 ## Controls
 
@@ -34,11 +47,9 @@ Use `pass`, `fail`, `unknown`, or `not_applicable`. Unknown controls reduce
 coverage. Optional, beta, premium, unavailable, immutable, or ineligible features
 are unscored opportunities.
 
-## Official sources
+## Registered official evidence
 
-- [Apple Ads performance measurement](https://ads.apple.com/app-store/help/attribution/0028-measuring-ad-performance)
-- [Apple Ads reports API](https://developer.apple.com/documentation/apple_ads/reports)
-- [Apple Ads developer documentation](https://developer.apple.com/documentation/apple_ads)
+- `apple-ads-api-official`: [Using Apple Ads API functionality](https://developer.apple.com/documentation/apple_ads/using-apple-search-ads-api-functionality)
 
-Official sources override this summary when they change. Vendor case studies and
-recommendations must remain labeled and contextual rather than universalized.
+Official sources override this summary when they change. Unsupported controls stay
+`unknown`; vendor case studies remain labeled and contextual.

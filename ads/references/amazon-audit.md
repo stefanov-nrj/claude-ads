@@ -5,9 +5,22 @@ sources before using this reference after its control-plane refresh date.
 
 ## Category model
 
-The platform capability manifest supplies category weights that total 100. The
-deterministic engine applies weights after scoring applicable controls within
-each category; it never multiplies the category weight into each individual row.
+This reference does not define an executable scoring profile. Bind a versioned
+profile whose categories cover the applicable controls and whose weights total 100;
+otherwise produce findings without a health score. The deterministic engine applies
+weights only after scoring applicable controls within each category.
+
+## Runtime evaluation contract
+
+- Treat each row as an applicability-first evidence question. Missing evidence is
+  `unknown`; unavailable or ineligible surfaces are `not_applicable`.
+- Verify marketplace, region, seller/vendor relationship, ad product, API access,
+  attribution, reporting grain, and retail ownership before evaluation.
+- The registered source below grounds API availability only. Current product,
+  policy, metric, attribution, catalog, and format claims require additional dated
+  official source IDs or account evidence.
+- This reference is advisory and export-read only. It does not provide a live
+  Amazon API reader or mutation adapter.
 
 ## Controls
 
@@ -34,11 +47,9 @@ Use `pass`, `fail`, `unknown`, or `not_applicable`. Unknown controls reduce
 coverage. Optional, beta, premium, unavailable, immutable, or ineligible features
 are unscored opportunities.
 
-## Official sources
+## Registered official evidence
 
-- [Amazon Ads API overview](https://advertising.amazon.com/about-api/)
-- [Amazon Ads learning console](https://advertising.amazon.com/academy/library)
-- [Amazon Ads support center](https://advertising.amazon.com/resources/ad-policy)
+- `amazon-ads-api-official`: [Amazon Ads API overview](https://advertising.amazon.com/about-api/)
 
-Official sources override this summary when they change. Vendor case studies and
-recommendations must remain labeled and contextual rather than universalized.
+Official sources override this summary when they change. Unsupported controls stay
+`unknown`; vendor case studies remain labeled and contextual.

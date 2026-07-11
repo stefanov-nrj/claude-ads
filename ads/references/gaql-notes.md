@@ -1,17 +1,26 @@
-# GAQL Compatibility & Accuracy Notes
+# GAQL compatibility and accuracy notes
 
-<!-- Added: 2026-04-01 -->
-<!-- Source: akarls-web fork audit accuracy improvements (44 commits) -->
-<!-- Purpose: Prevent false positives when analyzing Google Ads data via GAQL or exports -->
+GAQL fields, compatibility rules, date constants, and API versions change. Treat
+this file as query-design guidance, not a current field catalog. Before executing
+a query, record the customer ID, API version, query resource, selected fields,
+date window, and the current Google Ads API field/reference source ID. A runtime
+`INVALID_ARGUMENT` or `UNRECOGNIZED_FIELD` is `needs_input` for query repair; it
+must not be silently converted into an empty dataset.
 
-## Known GAQL Field Incompatibilities (API v20+)
+## Compatibility discovery
 
-| Resource | Incompatible Field | Error | Fix |
-|----------|-------------------|-------|-----|
-| `search_term_view` | `campaign.status`, `ad_group.status` | INVALID_ARGUMENT | Filter status in application layer, not GAQL |
-| `search_term_view` | `search_term_view.status` | INVALID_ARGUMENT | Field deprecated/removed in v20 |
-| `asset_group_signal` | `audience_signal` | UNRECOGNIZED_FIELD | Use `resource_name` instead |
-| DURING clause | `LAST_90_DAYS` | INVALID_VALUE_WITH_DURING_OPERATOR | Use `LAST_30_DAYS` for search terms |
+Use the current official Google Ads API documentation and field metadata for the
+selected version to validate:
+
+- whether each selected and filtered field is selectable with the primary resource;
+- whether segments change row grain or conflict with metrics;
+- whether the chosen date constant exists, otherwise use explicit dates;
+- whether resource status is available in-query or must be joined or filtered
+  after retrieval;
+- pagination, partial-failure, quota, currency-unit, timezone, and manager-account
+  behavior.
+
+Do not carry a query forward solely because it worked with a prior API version.
 
 ## Keyword Deduplication
 
@@ -21,17 +30,16 @@
 
 **Alternative:** Remove `segments.date` from GAQL queries entirely to eliminate date-level duplication at source.
 
-**Impact:** All downstream keyword-dependent checks (G03, G05, G07, G-PM3, G17, G21, G25, G-KW1, and ~10 others) automatically use correct unique counts.
+Record the resulting row grain in the run manifest. Downstream checks may consume
+the normalized keyword grain only after fixture or account-level reconciliation.
 
 ## Filter Scope Best Practices
 
-For active audits, filter to ENABLED resources only:
-- **Campaigns:** `campaign.status = 'ENABLED'` (not `!= 'REMOVED'`, which includes PAUSED)
-- **Ad groups:** ENABLED campaigns + non-removed groups
-- **Keywords:** ENABLED campaigns + non-removed groups + non-removed keywords
-- **Search terms:** Extended from `LAST_30_DAYS` to `LAST_90_DAYS` for deeper analysis, ordered by cost DESC
-
-**Why:** Including paused campaigns/ad groups causes false positives. Paused ad groups can have ENABLED keywords at criterion level but aren't visible in the UI; auditing them confuses users.
+Scope status to the question being answered. A current-serving health view normally
+separates enabled, paused, and removed entities. A historical change, overlap, or
+rollback investigation may require paused entities. Never describe the account as
+complete when the query intentionally excludes a status, and never assume a fixed
+lookback is suitable for every conversion lag or business cycle.
 
 ## Error Handling
 
@@ -40,10 +48,10 @@ Track which data fetches failed and why. Report as a G-SYS1 diagnostic:
 - Provide per-check context on which checks were skipped due to missing data
 - Never silently skip checks; always explain why data is unavailable
 
-## Legacy BMM (Broad Match Modified) Detection
+## Historical match-type interpretation
 
-Google stripped '+' prefixes during the 2021 migration but kept `matchType='BROAD'` in the API.
-
-**Heuristic:** True intentional broad match is ALWAYS paired with Smart Bidding (tCPA, tROAS, Maximize Conversions/Value). BROAD + Manual CPC = legacy BMM (behaves as phrase match).
-
-**Impact:** Without this heuristic, accounts with legacy BMM keywords generate hundreds of false failures on G17.
+Do not infer legacy Broad Match Modified behavior or advertiser intent from the
+current `BROAD` enum, bidding strategy, or absence of a `+` prefix. Inspect dated
+change history, search terms, current matching behavior, campaign controls, and
+owner intent. If that evidence is unavailable, report the historical classification
+as `unknown`; do not turn it into a failure or an automated negative-keyword action.

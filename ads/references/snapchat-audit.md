@@ -3,11 +3,23 @@
 Retrieved: 2026-07-11. Refresh official platform and policy sources before using
 this reference after its control-plane refresh date.
 
-## Category weights
+## Category model
 
-Measurement 25%, structure and delivery 20%, creative 20%, audience 15%, budget
-and experimentation 10%, policy and brand safety 10%. The deterministic engine
-applies these weights after scoring applicable controls within each category.
+This reference does not define an executable scoring profile. Bind a versioned
+profile whose categories cover the applicable controls and whose weights total 100;
+otherwise produce findings without a health score.
+
+## Runtime evaluation contract
+
+- Treat each row as an applicability-first evidence question. Missing evidence is
+  `unknown`; unavailable or ineligible surfaces are `not_applicable`.
+- Verify objective, placement, geography, measurement path, reporting lifecycle,
+  catalog use, policy, and account eligibility before evaluation.
+- The registered source below grounds the Marketing API surface only. Current
+  Pixel, CAPI, measurement, report-field, format, policy, and availability claims
+  require additional dated official source IDs or account evidence.
+- This reference is advisory and export-read only. It does not provide a live Snap
+  API reader or mutation adapter.
 
 ## Controls
 
@@ -34,13 +46,9 @@ Results use `pass`, `fail`, `unknown`, or `not_applicable`. Unknown controls
 reduce evidence coverage; unavailable, beta, premium, or ineligible features are
 unscored opportunities.
 
-## Official sources
+## Registered official evidence
 
-- [Snapchat Marketing API](https://developers.snap.com/marketing-api/home)
-- [Snap Ads API](https://developers.snap.com/marketing-api/Ads-API/introduction)
-- [Snap measurement API](https://developers.snap.com/marketing-api/Ads-API/measurement)
-- [Snap Pixel](https://forbusiness.snapchat.com/advertising/snap-pixel)
+- `snap-marketing-api`: [Snap Marketing API](https://developers.snap.com/marketing-api/home)
 
-Official product, API, policy, and regional availability sources override this
-summary when they change. Practitioner material may supplement but not replace
-official interface and policy evidence.
+Official sources override this summary when they change. Unsupported controls stay
+`unknown`; practitioner material may supplement but not replace official evidence.

@@ -3,11 +3,23 @@
 Retrieved: 2026-07-11. Refresh official platform and policy sources before using
 this reference after its control-plane refresh date.
 
-## Category weights
+## Category model
 
-Measurement 25%, structure and delivery 20%, creative 20%, audience 15%, budget
-and experimentation 10%, policy and brand safety 10%. The deterministic engine
-applies these weights after scoring applicable controls within each category.
+This reference does not define an executable scoring profile. Bind a versioned
+profile whose categories cover the applicable controls and whose weights total 100;
+otherwise produce findings without a health score.
+
+## Runtime evaluation contract
+
+- Treat each row as an applicability-first evidence question. Missing evidence is
+  `unknown`; unavailable or ineligible surfaces are `not_applicable`.
+- Verify objective, placement, geography, identity, measurement path, catalog use,
+  reporting definitions, policy, and account eligibility before evaluation.
+- The registered source below grounds supported conversion events only. Current
+  catalog, DPA, targeting, format, policy, and API claims require additional dated
+  official source IDs or account evidence.
+- This reference is advisory and export-read only. It does not provide a live
+  Reddit API reader or mutation adapter.
 
 ## Controls
 
@@ -34,12 +46,9 @@ Results use `pass`, `fail`, `unknown`, or `not_applicable`. Unknown controls
 reduce evidence coverage; unavailable, beta, premium, or ineligible features are
 unscored opportunities.
 
-## Official sources
+## Registered official evidence
 
-- [Reddit catalogs](https://business.reddithelp.com/articles/Knowledge/catalogs)
-- [Reddit dynamic product ads](https://business.reddithelp.com/articles/Knowledge/dynamic-product-ads)
-- [Reddit conversion events](https://business.reddithelp.com/articles/Knowledge/supported-conversion-events)
+- `reddit-business-help`: [Reddit supported conversion events](https://business.reddithelp.com/articles/Knowledge/supported-conversion-events)
 
-Official product, API, policy, and regional availability sources override this
-summary when they change. Practitioner material may supplement but not replace
-official interface and policy evidence.
+Official sources override this summary when they change. Unsupported controls stay
+`unknown`; practitioner material may supplement but not replace official evidence.

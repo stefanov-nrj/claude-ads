@@ -59,9 +59,11 @@ Platform health applies normalized category weights after category calculation:
 platform_health = sum(category_health * category_weight)
 ```
 
-Every platform capability manifest must declare category weights totaling exactly
-100. A category with no applicable controls is removed and the remaining category
-weights are renormalized for that run.
+The caller must supply a versioned scoring profile whose category weights total
+exactly 100; the production engine validates this invariant. The capability
+manifest describes executable platform surfaces and is not, by itself, a scoring
+profile. A category with no applicable controls is removed and the remaining
+category weights are renormalized for that run.
 
 ## Coverage status
 
@@ -76,7 +78,8 @@ coverage remains above 80%.
 
 ## Platform categories
 
-The capability manifest is canonical. Initial v2 defaults are:
+The following are initial product reference profiles. They are not inferred from
+platform behavior and do not become executable merely by appearing in this file:
 
 - Google: measurement 25, waste 20, structure 15, keywords 15, creative 15, settings 10.
 - Meta: measurement 25, creative 25, structure 20, audiences 15, delivery 10, policy 5.
@@ -91,8 +94,9 @@ The capability manifest is canonical. Initial v2 defaults are:
 - Snapchat: measurement 25, creative 20, structure 20, audiences 15, delivery 10, policy 10.
 - X: measurement 25, structure 20, creative 20, audiences 15, delivery 10, policy 10.
 
-These are product defaults, not factual platform claims. Change them only through a
-versioned capability decision and regression analysis.
+Before operational use, bind the selected profile to the run manifest and verify
+that its category names match the applicable controls. Change profiles only through
+a versioned product decision and regression analysis.
 
 ## Portfolio health
 

@@ -103,13 +103,15 @@ and synthesize the raw data into a coherent strategy.
   `references/budget-allocation.md` for the math.
 - Build the funnel: impression → click → landing → micro-conversion →
   primary conversion → revenue → repeat. Where does the leak live?
-- Evaluate constraints: budget floor for Smart Bidding (15+ conv/30d),
-  Meta ASC budget sufficiency (5x CPA per ad set), creative diversity for
-  Andromeda.
+- Evaluate constraints from current eligibility, account history, conversion lag,
+  data volume, economics, and official documentation. Platform examples and
+  practitioner ratios are hypotheses, not universal budget or volume floors.
 
 **Anti-pattern.** Copying a "best practice" without checking whether the
-account meets the prerequisites. Trusting platform attribution as ground
-truth when the MMP, server-side, and platform numbers disagree by 30%+.
+account meets the prerequisites. Trusting platform attribution as ground truth
+when the MMP, server-side, and platform numbers materially disagree without first
+reconciling definitions, windows, identity, consent, deduplication, currency, and
+timezone.
 
 **Example trigger.** `/ads math`, `/ads budget`, `/ads test`. Also the
 scoring and prioritization step of every audit.
@@ -123,17 +125,18 @@ unrelated concepts and link them to form a novel observation. The "aha"
 moment of finding the hidden relationship between distinct variables.
 
 **In ads work.**
-- Andromeda creative similarity + Entity-ID retrieval + GEM embeddings =
-  "creative is the new targeting" is mechanical, not slogan. See
-  `references/copy-frameworks.md` and `skills/ads-meta/SKILL.md`.
-- AI Max keywordless + Demand Gen + PMax = the post-keyword era; treat
-  match-type strategy as legacy in 2026.
-- iOS AdAttributionKit + Consent Mode V2 + sGTM/CAPI Gateway = the privacy
-  stack; recommendations in any one must be coherent with the other two.
+- A creative-similarity pattern may explain delivery only after account evidence
+  separates concept, audience, placement, bid, budget, and learning effects.
+- Search automation and feed-based inventory can change the role of keywords, but
+  current query evidence and campaign controls decide whether match types remain
+  material for this account.
+- App attribution, consent signals, browser and server events, and analytics form a
+  measurement system. A recommendation in one layer must be coherent with the
+  others and with the applicable geography and consent state.
 
 **Anti-pattern.** Siloed platform audits that miss the cross-platform
 leverage. Recommending Meta creative diversity changes without noticing the
-same principle applies to TikTok and Andromeda-era retrieval.
+same principle may apply to another platform after its delivery evidence is checked.
 
 **Example trigger.** `/ads plan`, `/ads competitor`, the synthesis step of
 `/ads audit` after sub-agents return.
@@ -150,14 +153,15 @@ seamless, functioning whole? The principle of building the wiring.
 - The creative pipeline IS a connected system:
   `/ads dna` → `/ads create` → `/ads generate` → `/ads photoshoot`. Each
   output feeds the next. Don't run them in isolation.
-- The tracking pipeline is a system: Pixel/CAPI + Consent Mode V2 + sGTM +
-  MMP + AdAttributionKit. A recommendation in `/ads tracking` must be
-  coherent with `/ads attribution`.
-- Sub-agents in `/ads audit` are orchestrated, not parallel-only — their
-  outputs synthesize into one Ads Health Score.
+- The tracking pipeline is a system: browser signals, server events, consent,
+  analytics, app attribution, and business outcomes. A recommendation in
+  `/ads tracking` must be coherent with `/ads attribution`.
+- Bounded workers in `/ads audit` are orchestrated, not parallel-only. Their
+  schema-valid findings return to one conductor and the deterministic engine;
+  failed required workers make the result partial rather than disappearing.
 
 **Anti-pattern.** Recommending fixes that conflict with each other.
-"Increase budget by 30%" and "pause this campaign" in the same audit
+"Increase budget" and "pause this campaign" in the same audit
 without acknowledging the trade-off. Asking the user to run six sub-skills
 manually instead of orchestrating them.
 
@@ -178,8 +182,9 @@ intuition when the data is ambiguous.
   proven emotional frameworks.
 - Look at the landing page as a first-time visitor would. Where is the
   curiosity? Where is the resolution? Is the CTA at the right moment?
-- Trust intuition when the data is ambiguous. Creative is half art —
-  scoring an ad 100% compliant while it has zero emotional pull is a fail.
+- Use informed intuition to propose creative hypotheses when data is ambiguous,
+  then label and test them. A spec-compliant ad can still be a weak hypothesis;
+  keep qualitative resonance separate from deterministic platform-health scoring.
 - Brand voice mapping: `references/voice-to-style.md` translates emotional
   attributes into concrete visual choices.
 
@@ -200,9 +205,10 @@ market wants something different than what you built. Let go of sunk costs
 to pivot efficiently.
 
 **In ads work.**
-- The 3× Kill Rule (see `references/scoring-system.md`): if CPA is >3× target
-  and has had 3+ optimization attempts, accept that this campaign is dead.
-  Don't keep tweaking.
+- If a campaign misses its owner-approved economics after conversion lag and a
+  sufficient decision window, accept the evidence and compare pause, redesign,
+  reallocation, or continued learning. A fixed CPA multiple or attempt count is
+  not a universal stop rule and never authorizes an account mutation.
 - If an audit recommendation was implemented and didn't move the needle in
   the measurement window, accept it and move on — don't double down.
 - If a client's stated goal doesn't match their data signal (says "leads"
@@ -230,8 +236,9 @@ write the code, draft the content, ship the deliverable.
 - Write the actual ad copy, not a copy brief about a copy brief.
 - Generate the ad assets through `/ads generate` — don't stop at the
   conceptual stage.
-- Render the PDF: `scripts/generate_report.py --check` then `--output`.
-  Quality gate before delivery (see Quality Gates in `ads/SKILL.md`).
+- Render requested formats from the canonical JSON bundle. Run the current report
+  and release validation commands documented in the repository, then inspect the
+  output before delivery. Do not name a script or format that is absent.
 
 **Anti-pattern.** Endless "more analysis needed" loops. A campaign brief
 that hedges every concept and forces the next collaborator to make every
@@ -254,8 +261,9 @@ cycle.
   measure whether it worked, you can't grow from it.
 - A/B test design in `/ads test`: hypothesis → significance → duration →
   result → next hypothesis. The loop is the point.
-- Re-audit at 30-day or 90-day intervals. Compare against the baseline
-  captured in the prior audit. Track the trajectory, not just the snapshot.
+- Re-audit after a decision-appropriate observation window. Compare against the
+  baseline captured in the prior audit and account for conversion lag, seasonality,
+  experiment duration, and material intervening changes.
 - Carry forward what worked and what didn't into the next campaign brief.
   `brand-profile.json` should evolve, not stay frozen.
 
@@ -279,7 +287,7 @@ Which principle dominates at each step of the canonical workflow:
 | `/ads dna <url>` | OBSERVE, LISTEN | Brand listening made concrete |
 | `/ads audit` — data collection | OBSERVE, OBSERVE-Internal | Pull data; check your own biases |
 | `/ads audit` — analysis | THINK, CONNECT-Lateral | First-principles math; cross-platform synthesis |
-| `/ads audit` — synthesis & scoring | CONNECT-System, ACCEPT | Wire findings together; accept dead campaigns |
+| `/ads audit` — synthesis & scoring | CONNECT-System, ACCEPT | Wire findings together; accept uncertainty and failed hypotheses |
 | `/ads plan` | THINK, CONNECT-Lateral, FEEL | Strategy = math + insight + empathy |
 | `/ads create` | LISTEN, FEEL, CREATE | Hear the brand; feel the audience; ship the brief |
 | `/ads generate` / `/ads photoshoot` | FEEL, CREATE | Produce with emotional intent |

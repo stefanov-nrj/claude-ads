@@ -1,106 +1,61 @@
-# Additional Advertising Platforms
+# Adjacent advertising channels
 
-<!-- Created: 2026-04-13 | v1.5 -->
-<!-- Purpose: Overview of platforms beyond the core 7 for strategic planning -->
+Reddit, Pinterest, Snapchat, and X are first-class Claude Ads platforms. This
+reference covers channels outside the twelve-platform product contract. It is a
+discovery aid, not an assertion that an integration, placement, price, audience,
+or measurement feature is currently available.
 
-## When to Consider These Platforms
+## Applicability gate
 
-Use the decision tree below to determine if additional platforms are relevant:
+Before recommending an adjacent channel, record:
 
-```
-High intent + Business audience → LinkedIn (already covered) or Reddit
-High intent + Consumer purchase → Google (covered) or Pinterest
-Low intent + Visual discovery → TikTok (covered) or Pinterest/Snapchat
-Brand awareness + Premium → CTV/OTT or YouTube (covered)
-Niche community + Discussion → Reddit
-Professional software → G2, Capterra (directory ads)
-```
+- the business objective, geography, audience, budget ceiling, and test horizon;
+- current inventory and account eligibility from an official dated source;
+- the buying route, fee model, minimum commitment, and cancellation terms;
+- the measurement path, attribution limitations, consent requirements, and a
+  channel-independent success measure;
+- the creative formats actually accepted by the selected publisher or exchange;
+- whether Claude Ads has an executable adapter, export contract, or only advisory
+  guidance for the channel.
 
-## Reddit Ads
+Without this evidence, return a research lead rather than a budget allocation.
+Do not borrow CPM, CPC, CPL, reach, demographic, or conversion assumptions from a
+different market or inventory type.
 
-**Best for:** Community-driven brands, SaaS, gaming, finance, education
-**Audience:** 1.7B+ monthly active users, highly engaged niche communities
+## CTV and OTT
 
-**Key features:**
-- Subreddit targeting (precision by interest community)
-- Conversation placement ads (native to discussions)
-- Free-form ads (blend into Reddit feed)
-- Conversation ads (promoted comments)
+Potential buying routes include publisher-direct, platform-managed, and
+programmatic inventory. Treat each as a different product. Verify publishers,
+device coverage, geography, skippability, frequency controls, brand-safety tools,
+household identity, reporting latency, and lift-study eligibility before planning.
 
-**Benchmarks (approximate):**
-- CPM: $2-5 (lower than Meta/LinkedIn)
-- CPC: $0.50-2.00
-- CTR: 0.5-1.5%
+CTV may fit an upper-funnel or incremental-reach hypothesis when the advertiser
+has appropriate video, a defensible reach or lift measure, and sufficient test
+control. It is not inherently unsuitable for response objectives, and a fixed
+monthly-spend threshold is not evidence of fit.
 
-**When to recommend:** Brand has community presence, product benefits from social proof/discussion, budget allows testing ($1K+/month minimum)
+## Software directories and review platforms
 
-## CTV/OTT Advertising
+Potential surfaces include software category directories, comparison sites, and
+review platforms. Verify whether the product is sold as media, sponsorship,
+lead-generation, or another commercial arrangement; definitions of a qualified
+lead and duplicate/refund rules often matter more than the headline price.
 
-**Best for:** Brand awareness, broad reach, upper funnel
-**Reach:** 230M+ US CTV users (2025)
+Consider a test only when category intent, review quality, deal economics, routing,
+consent, deduplication, and downstream revenue measurement are clear. Never infer
+minimum review counts, lead prices, or deal-value thresholds without current
+platform terms and the advertiser's own close-rate economics.
 
-**Key platforms:**
-- YouTube CTV (covered in ads-youtube)
-- Microsoft CTV (Netflix, Max, Hulu, Roku, discovery+)
-- The Trade Desk (programmatic)
-- Amazon Fire TV / Freevee
+## Other publisher or retail-media opportunities
 
-**Key considerations:**
-- Non-skippable 15-30s format (high completion rates)
-- Limited conversion tracking (no click-through, attribution challenges)
-- CPM-based pricing ($15-35 CPM typical)
-- Best measured with: Brand Lift studies, search lift, incrementality
+For any publisher, marketplace, retailer, creator network, or emerging ad surface:
 
-**When to recommend:** Brand awareness goal, budget >$10K/month, strong creative assets available
+1. register the official product, policy, specification, and measurement sources;
+2. classify availability by account, market, objective, placement, and buying route;
+3. map export or API fields before comparing performance with another platform;
+4. run a bounded experiment with owner-approved spend and stop conditions;
+5. keep announced, beta, premium, managed-service, and wait-listed capabilities
+   unscored until account evidence confirms access.
 
-## Pinterest Ads
-
-**Best for:** E-commerce (home, fashion, food, beauty, DIY), visual discovery
-**Audience:** 500M+ monthly active users, 85% use for purchase inspiration
-
-**Key features:**
-- Shopping Ads (catalog integration)
-- Standard Pins, Video Pins, Carousel Pins
-- Interest + keyword targeting hybrid
-- Visual search (Lens)
-
-**Benchmarks:**
-- CPC: $0.10-1.50
-- CPM: $2-5
-- CVR: higher than average for visual/inspiration categories
-
-**When to recommend:** E-commerce with strong visuals, home/fashion/food categories, audiences that plan purchases
-
-## Snapchat Ads
-
-**Best for:** Gen Z / young millennial audiences, mobile-first brands
-**Audience:** 850M+ monthly active users, skews 13-34
-
-**Key features:**
-- Snap Ads (full-screen vertical video)
-- Collection Ads (product catalog)
-- Story Ads, Spotlight Ads
-- AR Lenses and Filters (interactive)
-- Dynamic Product Ads
-
-**Benchmarks:**
-- CPM: $2-5 (competitive with TikTok)
-- Swipe-up rate: 0.3-1.0%
-- CPI (app installs): $1-3
-
-**When to recommend:** Target audience is under 30, mobile app promotion, AR/interactive creative fits brand
-
-## Directory / Review Platform Ads
-
-**Best for:** B2B SaaS, professional services
-**Platforms:** G2, Capterra, TrustRadius, Software Advice (Gartner Digital Markets)
-
-**Key features:**
-- High-intent buyers actively comparing software
-- Category page sponsorship
-- Competitor comparison placement
-- Review-driven credibility
-
-**Pricing:** CPL model ($15-75 per lead typical for mid-market SaaS)
-
-**When to recommend:** B2B SaaS with sufficient reviews (20+), high-value deals (ACV >$5K), want to capture bottom-funnel comparison shoppers
+Claude Ads remains read-only by default. An adjacent-channel recommendation never
+creates mutation authority or implies a live connector.

@@ -5,10 +5,11 @@
 
 ## Purpose
 
-Brand voice scores (1 to 10 scale) from `brand-profile.json` translate directly
-into visual style descriptors for image generation prompts. Each axis maps to
-specific aesthetic attributes that become the [STYLE] component in banana prompts.
-When multiple axes combine, their descriptors merge into a cohesive style string.
+Brand voice scores from `brand-profile.json` can suggest visual hypotheses; they do
+not translate deterministically into a visual identity. Brand examples, approved
+assets, accessibility, culture, audience, placement, and the creative brief take
+precedence. Use mappings below to propose testable directions and require human
+review before generation or publication.
 
 ## Axis Mappings
 
@@ -44,13 +45,13 @@ When multiple axes combine, their descriptors merge into a cohesive style string
 | Mid       | 4-6   | Contemporary layouts, balanced modern and classic cues  |
 | High      | 7-10  | Futuristic gradients, 3D renders, neon accents, glass   |
 
-### 5. friendly_authoritative
+### 5. expert_accessible
 
 | Range     | Score | Visual Descriptors                                      |
 |-----------|-------|---------------------------------------------------------|
-| Low       | 1-3   | Rounded shapes, illustration style, bright accents      |
-| Mid       | 4-6   | Mixed photography and illustration, approachable layout |
-| High      | 7-10  | Editorial photography, dark backgrounds, gold accents   |
+| Low       | 1-3   | Technical diagrams, denser information, specialist cues |
+| Mid       | 4-6   | Balanced explanation, clear hierarchy, mixed detail     |
+| High      | 7-10  | Plain-language labels, generous hierarchy, familiar cues |
 
 ### 6. playful_serious
 
@@ -63,10 +64,12 @@ When multiple axes combine, their descriptors merge into a cohesive style string
 ## How to Apply
 
 1. Read `brand-profile.json` and extract the six voice axis scores.
-2. For each axis, look up the matching range (Low, Mid, High) in the table above.
-3. Collect one or two descriptors per axis that best fit the brand context.
-4. Combine all selected descriptors into a single [STYLE] string, separated by commas.
-5. Append the [STYLE] string to the banana prompt template before generation.
+2. For each axis, treat the matching range as candidate descriptors only.
+3. Compare candidates with supplied brand assets and remove contradictions,
+   stereotypes, inaccessible choices, and culturally unsafe assumptions.
+4. Draft at least two materially different style directions when evidence is weak.
+5. Record the selected direction and owner approval in the creative manifest, then
+   pass normalized descriptors to the installed image capability.
 
 ## Example
 
@@ -83,5 +86,5 @@ The resulting [STYLE] component:
 whimsical patterns, candy colors
 ```
 
-This creates a vibrant, approachable visual identity that feels energetic
-and playful while maintaining strong visual impact.
+This is one hypothesis for review. It is not evidence that the brand has this
+identity or that the direction will improve performance.

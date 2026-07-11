@@ -1,123 +1,35 @@
-# Microsoft Creative Specs: Generation Guide
+# Microsoft Advertising creative generation contract
 
-<!-- Updated: 2026-03-12 -->
-<!-- Source: platform-specs.md + Microsoft Advertising requirements -->
-<!-- Used by: ads-generate, visual-designer agent -->
+Use this reference for Microsoft Advertising creative planning. Microsoft formats,
+Copilot or partner inventory, import mappings, copy limits, dimensions, extensions,
+and account availability change. Verify them from dated official sources and live
+account evidence; do not assume Microsoft is a dimension-for-dimension Google copy.
 
-## Purpose
+## Specification gate
 
-Generation-ready specifications for Microsoft (Bing) Ads creative. Microsoft creative
-is largely a subset of Google creative; most Google assets can be reused directly.
-The unique format is the Multimedia Ad.
+For each selected Search, Audience, multimedia, video, retail, native, Copilot, or
+other placement, record objective, network, geography, eligibility, official source
+ID, asset fields, dimensions, ratio, file limits, copy limits, destination behavior,
+and preview result.
 
----
+Imported Google assets are candidates, not validated Microsoft assets. Reconcile
+every mapped and omitted field, policy status, tracking parameter, extension, bid,
+budget, URL, and schedule. Missing current evidence is `needs_input`.
 
-## Multimedia Ads (Microsoft-Unique)
+## Microsoft-specific review
 
-The primary image-based format unique to Microsoft Ads.
+- Separate Microsoft Search, Audience Network, publisher/partner, and conversational
+  inventory in both specification and reporting.
+- Do not apply assumed CPC discounts, audience-age stereotypes, or generic
+  “professional” styling to creative decisions.
+- Treat Copilot and other announced or pilot surfaces as unscored discovery until
+  the current account confirms access and exposes auditable reporting.
+- Reuse an asset only when its rights, destination, crop, copy, format, and policy
+  state validate for Microsoft. A compatible ratio alone is insufficient.
 
-| Component | Spec |
-|-----------|------|
-| Image | 1200×628 (1.91:1) |
-| Short Headline | 30 chars |
-| Long Headline | 90 chars |
-| Description | 90 chars |
-| Business Name | 25 chars |
+## Output contract
 
-**Generation target: 1200×628 (1.91:1)**
-This is the only unique image dimension for Microsoft. Everything else mirrors Google.
-
----
-
-## Responsive Search Ads (RSA)
-
-Identical to Google RSA character limits:
-
-| Component | Min | Max | Character Limit |
-|-----------|-----|-----|-----------------|
-| Headlines | 3 | 15 | 30 chars each |
-| Descriptions | 2 | 4 | 90 chars each |
-| Display Paths | N/A | 2 | 15 chars each |
-
-**Asset reuse:** RSA copy written for Google can be used directly in Microsoft
-with no changes. Use the same headlines and descriptions.
-
----
-
-## Audience Ads (Display Network)
-
-| Size | Dimensions |
-|------|-----------|
-| Landscape | 1200×628 (1.91:1) |
-| Square | 1200×1200 (1:1) |
-| Small square | 628×628 (1:1) |
-
-These display on the Microsoft Audience Network (MSN, Outlook, Edge).
-**Asset reuse:** Generate the same 3 Google Display assets (1200×628, 1200×1200, and
-960×1200 scaled to 628×628). No unique generation needed.
-
----
-
-## Microsoft-Unique Extensions
-
-These require copy but no image generation:
-
-| Extension | Description |
-|-----------|-------------|
-| Action Extension | Pre-defined action buttons (Book Now, Download, etc.) |
-| Filter Link Extension | Category-based deep links (e.g., product categories) |
-| Review Extension | Third-party review quotes with source attribution |
-
----
-
-## Copilot Ad Integration (2025-2026)
-
-Microsoft Ads now surface in Bing/Copilot AI responses. This affects:
-- **Ad copy relevance**: Copilot reads headline + description for context matching
-- **Sitelinks**: More likely to be shown in AI responses than on traditional SERPs
-- **Image assets**: Multimedia Ad images may appear in Copilot responses
-
-**Generation implication:** Use clear, descriptive product language in image alt context.
-Generate images that visually communicate the product/service without requiring copy.
-
----
-
-## Google Import Strategy
-
-Most advertisers import Google campaigns to Microsoft. After import:
-- Bid adjustment: Microsoft CPCs are typically 20-35% lower than Google
-- Image assets: All Google PMax images (1200×628, 1200×1200, 960×1200) import directly
-- No additional image generation needed for Microsoft-only
-
-**When to generate Microsoft-specific assets:**
-- Multimedia Ads (1200×628) if not using Google import
-- Custom copy for Copilot-optimized RSA headlines
-
----
-
-## Image Generation Prompt Modifiers
-
-**For Multimedia Ads (1200×628):**
-- `"horizontal composition, 1.91:1 aspect ratio"`
-- `"clean professional background"`
-- `"Microsoft Bing search audience; professional, trustworthy aesthetic"`
-- `"product or service clearly visible"`
-
-**Tone guidance:** Microsoft's audience skews slightly older (35+) and more professional
-than Google Search. Apply a slightly more conservative, trust-signaling visual style.
-Avoid TikTok-style dramatic edits or Meta-style casual lifestyle photography.
-
----
-
-## Asset Reuse Summary
-
-| Source | Reusable for Microsoft? |
-|--------|------------------------|
-| Google PMax 1200×628 | ✅ Direct reuse for Multimedia Ads |
-| Google PMax 1200×1200 | ✅ Direct reuse for Audience Ads |
-| Google RSA copy | ✅ Use as-is |
-| Meta 4:5 (1080×1350) | ❌ Wrong ratio |
-| TikTok 9:16 (1080×1920) | ❌ Wrong ratio |
-
-**When using Google import:** No new image generation needed for Microsoft.
-Generate Microsoft-specific assets only if running Microsoft-native campaigns.
+Record concept ID, placement/network, specification source IDs, dimensions, ratio,
+format, copy, import provenance, checksum, rights, safety review, and previews. The
+manifest must distinguish reused, transformed, and newly generated assets. Draft
+generation does not imply a live Microsoft upload or write capability.

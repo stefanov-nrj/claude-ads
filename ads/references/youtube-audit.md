@@ -5,9 +5,22 @@ sources before using this reference after its control-plane refresh date.
 
 ## Category model
 
-The platform capability manifest supplies category weights that total 100. The
-deterministic engine applies weights after scoring applicable controls within
-each category; it never multiplies the category weight into each individual row.
+This reference does not define an executable scoring profile. Bind a versioned
+profile whose categories cover the applicable controls and whose weights total 100;
+otherwise produce findings without a health score. The deterministic engine applies
+weights only after scoring applicable controls within each category.
+
+## Runtime evaluation contract
+
+- Treat each row as an applicability-first evidence question. Missing evidence is
+  `unknown`; unavailable or ineligible surfaces are `not_applicable`.
+- Verify campaign subtype, inventory, objective, geography, format, reporting
+  fields, measurement path, and account eligibility before evaluation.
+- The registered source below grounds Google Ads API video campaign support only.
+  Current Demand Gen, migration, engagement-goal, creative, policy, and availability
+  claims require additional dated official source IDs or account evidence.
+- This reference is advisory and export-read only. It does not provide a live
+  Google/YouTube API reader or mutation adapter.
 
 ## Controls
 
@@ -34,12 +47,9 @@ Use `pass`, `fail`, `unknown`, or `not_applicable`. Unknown controls reduce
 coverage. Optional, beta, premium, unavailable, immutable, or ineligible features
 are unscored opportunities.
 
-## Official sources
+## Registered official evidence
 
-- [Demand Gen campaigns](https://support.google.com/google-ads/answer/13695777?hl=en)
-- [VAC to Demand Gen migration](https://support.google.com/google-ads/answer/15110871?hl=en)
-- [YouTube Engagement goals](https://support.google.com/google-ads/answer/12301500?hl=en)
-- [Demand Gen creative guide](https://support.google.com/google-ads/answer/14733311?hl=en)
+- `youtube-google-ads-video-official`: [Google Ads API video campaigns](https://developers.google.com/google-ads/api/docs/video/overview)
 
-Official sources override this summary when they change. Vendor case studies and
-recommendations must remain labeled and contextual rather than universalized.
+Official sources override this summary when they change. Unsupported controls stay
+`unknown`; vendor case studies remain labeled and contextual.

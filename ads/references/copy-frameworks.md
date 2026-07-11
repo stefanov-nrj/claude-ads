@@ -5,6 +5,12 @@
 
 ## Overview
 
+Frameworks organize ideas; they do not establish persuasion, policy compliance, or
+performance. Select a framework from audience research and the approved brief, then
+test it against materially different concepts. All figures and people in examples
+below are placeholders. Replace them only with owner-approved, substantiated proof;
+never publish illustrative claims or fictional testimonials as facts.
+
 | Framework          | Expansion                        | Best For              | Platform Fit         |
 |--------------------|----------------------------------|-----------------------|----------------------|
 | AIDA               | Attention, Interest, Desire, Action | Cold audiences       | Meta, Google, YouTube |
@@ -30,9 +36,9 @@
 - LinkedIn (150 chars): `[Attention stat or question]. [Interest detail]. [Desire outcome]. [Action CTA].`
 - TikTok (100 chars): `[Attention hook] [Interest] [Desire benefit] [CTA]`
 
-**E-commerce example:** "Tired of dull skin? Our vitamin C serum brightens in 7 days. Join 50K happy customers. Shop now."
+**E-commerce example:** "Looking for a simpler skincare routine? Explore the formula, ingredients, and use guide. Shop now."
 
-**SaaS example:** "Spending hours on reports? Automate analytics in minutes. See 3x faster insights. Start free trial."
+**SaaS example:** "Reporting taking focus from analysis? Bring approved data into one review workflow. Explore the demo."
 
 - DO: Lead with a pattern interrupt; include a specific number or stat
 - DO: End with a single clear CTA
@@ -55,7 +61,7 @@
 - LinkedIn (150 chars): `[Problem in professional context]. [Agitate impact on KPIs]. [Solution with proof]. [CTA].`
 - TikTok (100 chars): `[Problem] [Agitate] [Solution brand] [CTA]`
 
-**E-commerce example:** "Back pain from your desk? It only gets worse without support. Our ergonomic chair fixes posture in a week. Order today."
+**E-commerce example:** "Need a workspace that fits your routine? Compare the chair's verified dimensions and adjustments. View details."
 
 **SaaS example:** "Leads falling through the cracks? Every lost follow-up costs revenue. Our CRM auto-sequences every lead. Try free."
 
@@ -105,9 +111,9 @@
 - LinkedIn (150 chars): `[Promise ROI claim]. [Picture day-in-life improvement]. [Proof: client result]. [Push CTA].`
 - TikTok (100 chars): `[Promise] [Picture] [Proof] [Push CTA]`
 
-**E-commerce example:** "Cut energy bills by 40%. Imagine comfortable rooms year-round. 12,000 homes upgraded. Get your free quote."
+**E-commerce example:** "Explore an upgrade designed for year-round comfort. Review the verified specifications and request a quote."
 
-**SaaS example:** "Double pipeline velocity. Picture your team closing 2x deals monthly. Trusted by 500 B2B companies. Book a demo."
+**SaaS example:** "Picture a clearer handoff from lead to owner. See the workflow and verified customer evidence. Book a demo."
 
 - DO: Back the promise with verifiable proof
 - DO: Use specific numbers in the proof element
@@ -130,9 +136,9 @@
 - LinkedIn (150 chars): `[Feature technical spec]. [Advantage: what it means for teams]. [Benefit: bottom-line impact]. [CTA].`
 - TikTok (100 chars): `[Feature] [Advantage] [Benefit] [CTA]`
 
-**E-commerce example:** "256GB storage, 12-hour battery. Outperforms competitors at half the price. Work all day, uninterrupted. Buy now."
+**E-commerce example:** "[Verified storage] and [verified tested battery result]. Compare the documented specifications. Buy now."
 
-**SaaS example:** "SOC 2 certified, 99.99% uptime. Zero migration downtime vs. legacy tools. Ship faster with confidence. Start trial."
+**SaaS example:** "[Current assurance status] and [measured service level]. Review the documentation and migration plan. Start trial."
 
 - DO: Lead with the most differentiating feature
 - DO: Translate every feature into a tangible benefit
@@ -184,4 +190,7 @@ Choose the right framework based on campaign goal and audience temperature:
 - Re-engagement goal: BAB with new offer
 
 When in doubt, start with PAS for pain-aware audiences or AIDA for broad reach.
-Test two frameworks against each other in A/B splits before scaling spend.
+When an experiment is justified, compare materially different concepts with a
+declared primary metric, guardrails, sample rationale, observation window, and
+decision rule. Do not scale spend merely because one framework has a better early
+platform-reported metric.
