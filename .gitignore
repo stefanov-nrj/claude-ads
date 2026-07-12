@@ -92,7 +92,7 @@ AUDIT-REPORT.md
 .github-audit/
 evals/results/canonical-model-gate.json
 
-# Research prompt drafts (the actual research outputs live in research/)
+# Research prompt drafts and private working notes (never shipped)
 research-prompt*.md
 .research-*.md
 
@@ -106,16 +106,3 @@ branding/*.html
 branding/*.png
 diagrams-preview.png
 blog-preview*.png
-
-# Diagram variant exploration (only the locked picks ship, not -A / -C alternates).
-# Locked picks: 01-architecture-B, 02-pipeline-A, 03-sub-skill-map-B,
-#               04-scoring-weights-B, 05-roadmap-A. Anything else is exploration.
-assets/banner-A.svg
-assets/banner-B.svg
-assets/banner-C.svg
-assets/diagrams/*-A.svg
-assets/diagrams/*-C.svg
-assets/diagrams/02-pipeline-B.svg
-assets/diagrams/05-roadmap-B.svg
-!assets/diagrams/02-pipeline-A.svg
-!assets/diagrams/05-roadmap-A.svg
